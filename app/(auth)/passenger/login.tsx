@@ -28,8 +28,14 @@ export default function PassengerLoginScreen() {
 
         setIsLoading(true);
         try {
-            await AuthService.login(form.email, form.password);
-            router.replace('/(passenger)/home');
+            const response = await AuthService.login(form.email, form.password);
+            const role = response.data?.role || response.data?.data?.role;
+
+            if (role === 'DRIVER') {
+                router.replace('/(driver)/home');
+            } else {
+                router.replace('/(passenger)/home');
+            }
         } catch (error: any) {
             Alert.alert('Error', error.response?.data?.message || 'Login failed. Please check your credentials.');
         } finally {

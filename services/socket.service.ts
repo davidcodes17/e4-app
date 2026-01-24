@@ -1,8 +1,9 @@
+import { HOST } from "@/security/api-secured";
 import { Client, IMessage } from "@stomp/stompjs";
 import "text-encoding-polyfill"; // Required for StompJS on React Native
 import { TokenService } from "./token.service";
 
-const SOCKET_URL = "ws://localhost:8080/ws";
+const SOCKET_URL = `ws://${HOST}/ws`;
 
 class SocketService {
   private client: Client | null = null;

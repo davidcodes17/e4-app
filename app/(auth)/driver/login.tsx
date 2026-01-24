@@ -28,8 +28,14 @@ export default function DriverLoginScreen() {
 
         setIsLoading(true);
         try {
-            await DriverService.login(form.email, form.password);
-            router.replace('/(driver)/home');
+            const response = await DriverService.login(form.email, form.password);
+            const role = response.data?.role || response.data?.data?.role;
+
+            if (role === 'DRIVER') {
+                router.replace('/(driver)/home');
+            } else {
+                router.replace('/(passenger)/home');
+            }
         } catch (error: any) {
             Alert.alert('Error', error.response?.data?.message || 'Login failed.');
         } finally {

@@ -50,17 +50,22 @@ export default function RideRequestScreen() {
     useEffect(() => {
         const fetchEstimates = async () => {
             try {
-                const estimate = await RideService.getEstimate({
+                const response = await RideService.getEstimate({
                     pickupLatitude: pickupCoords.latitude,
                     pickupLongitude: pickupCoords.longitude,
                     dropOffLatitude: destinationCoords.latitude,
                     dropOffLongitude: destinationCoords.longitude,
                 });
-                setRideDetails({
-                    distance: estimate.distance,
-                    duration: estimate.duration,
-                    fare: estimate.fare
-                });
+
+                const estimateData = response?.data?.data;
+
+                if (estimateData) {
+                    setRideDetails({
+                        distance: estimateData.distance,
+                        duration: estimateData.duration,
+                        fare: estimateData.estimate,
+                    });
+                }
             } catch (error) {
                 console.error('Failed to fetch estimates:', error);
                 Alert.alert('Error', 'Could not get ride estimates. Please try again.');
@@ -166,7 +171,7 @@ export default function RideRequestScreen() {
                                     </ThemedView>
                                     <ThemedView bg="transparent">
                                         <ThemedText size="sm" color="#687076">Est. Time</ThemedText>
-                                        <ThemedText weight="bold">{rideDetails.duration}</ThemedText>
+                                        <ThemedText weight="bold">{rideDetails?.duration + " mins"}</ThemedText>
                                     </ThemedView>
                                     <ThemedView bg="transparent">
                                         <ThemedText size="sm" color="#687076">Fare</ThemedText>
@@ -278,6 +283,7 @@ const styles = StyleSheet.create({
         borderColor: '#F3F4F6',
     },
     infoRow: {
+        backgroundColor: '#F9FAFB',
         paddingHorizontal: 10,
     },
     mainButton: {

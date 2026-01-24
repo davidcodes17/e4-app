@@ -36,8 +36,14 @@ export const DriverService = {
       emailAddress,
       password,
     });
-    if (response.data.token) {
-      await TokenService.saveToken(response.data.token);
+    const token = response.data?.data?.accessToken;
+    const role = response.data?.data?.role;
+
+    if (token) {
+      await TokenService.saveToken(token);
+    }
+    if (role) {
+      await TokenService.saveRole(role);
     }
     return response.data;
   },
