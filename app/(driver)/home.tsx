@@ -34,6 +34,14 @@ export default function DriverHomeScreen() {
                     setCurrentTrip(null);
                 }
             });
+
+            SocketService.subscribe('/user/queue/ride-status', (update) => {
+                if (update.status === 'CANCELLED') {
+                    Alert.alert('Cancelled', 'The passenger has cancelled the ride.');
+                    setState('online');
+                    setCurrentTrip(null);
+                }
+            });
         };
 
         initSocket();
@@ -186,22 +194,22 @@ export default function DriverHomeScreen() {
                         <ThemedView style={styles.locationContainer} mb={20}>
                             <ThemedView flexDirection="row" align="center" mb={12} bg="transparent">
                                 <Ionicons name="radio-button-on" size={16} color="#6C006C" />
-                                <ThemedText size="sm" ml={10}>Pickup: Lekki Phase 1, Lagos</ThemedText>
+                                <ThemedText size="sm" ml={10}>Pickup: {currentTrip?.fromLocation || 'Calculating...'}</ThemedText>
                             </ThemedView>
                             <ThemedView flexDirection="row" align="center" bg="transparent">
                                 <Ionicons name="location" size={16} color="#FF3B30" />
-                                <ThemedText size="sm" ml={10}>Drop-off: Victoria Island, Lagos</ThemedText>
+                                <ThemedText size="sm" ml={10}>Drop-off: {currentTrip?.toLocation || 'Calculating...'}</ThemedText>
                             </ThemedView>
                         </ThemedView>
 
                         <ThemedView flexDirection="row" justify="space-between" mb={24} bg="transparent">
                             <ThemedView bg="transparent">
                                 <ThemedText size="xs" color="#687076">Distance</ThemedText>
-                                <ThemedText weight="bold">4.2 km</ThemedText>
+                                <ThemedText weight="bold">{currentTrip?.distance || '0'} km</ThemedText>
                             </ThemedView>
                             <ThemedView bg="transparent">
                                 <ThemedText size="xs" color="#687076">Fare</ThemedText>
-                                <ThemedText size="lg" weight="bold" color="#6C006C">₦4,500</ThemedText>
+                                <ThemedText size="lg" weight="bold" color="#6C006C">₦{(currentTrip?.initialFare || 0).toLocaleString()}</ThemedText>
                             </ThemedView>
                         </ThemedView>
 

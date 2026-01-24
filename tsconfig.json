@@ -4,6 +4,12 @@
     "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+
+    "moduleResolution": "bundler",
+    "module": "esnext",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+
     "paths": {
       "@/*": ["./*"]
     }

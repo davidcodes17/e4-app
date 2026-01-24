@@ -6,7 +6,7 @@ import SocketService from '@/services/socket.service';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, Polyline } from 'react-native-maps';
 
 type ScreenState = 'request' | 'searching' | 'found';
@@ -38,6 +38,8 @@ export default function RideRequestScreen() {
     const [isFetchingEstimates, setIsFetchingEstimates] = useState(true);
     const [rideDetails, setRideDetails] = useState<RideDetails | null>(null);
     const [driverInfo, setDriverInfo] = useState<DriverInfo | null>(null);
+    const [priceOffers, setPriceOffers] = useState<any[]>([]);
+    const [driverLocation, setDriverLocation] = useState<{ latitude: number, longitude: number } | null>(null);
 
     // Coordinates logic
     const pickupCoords = pickupLat ? {
@@ -80,6 +82,13 @@ export default function RideRequestScreen() {
     useEffect(() => {
         if (state === 'searching') {
             SocketService.connect();
+
+            // Listen for Price Bids
+            SocketService.subscribe('/user/queue/price-offers', (offer) => {
+                setPriceOffers(prev => [...prev, offer]);
+            });
+
+            // Listen for Ride Status Updates
             SocketService.subscribe('/user/queue/ride-status', (update) => {
                 if (update.status === 'ACCEPTED') {
                     setDriverInfo({
@@ -89,14 +98,37 @@ export default function RideRequestScreen() {
                         rating: update.rating
                     });
                     setState('found');
+                } else if (update.status === 'ARRIVED') {
+                    Alert.alert('Arrived', 'Your driver has arrived at the pickup location.');
                 }
             });
 
+            // Listen for Driver Location
+            SocketService.subscribe('/user/queue/location', (loc) => {
+                setDriverLocation({
+                    latitude: loc.latitude,
+                    longitude: loc.longitude
+                });
+            });
+
             return () => {
+                SocketService.unsubscribe('/user/queue/price-offers');
                 SocketService.unsubscribe('/user/queue/ride-status');
+                SocketService.unsubscribe('/user/queue/location');
             };
         }
     }, [state]);
+
+    const handleAcceptOffer = async (offer: any) => {
+        setIsLoading(true);
+        try {
+            await RideService.acceptOffer(offer.id);
+            // Redirection logic usually handled by ride-status subscription
+        } catch (error: any) {
+            Alert.alert('Error', 'Failed to accept offer. It may have expired.');
+            setIsLoading(false);
+        }
+    }
 
     const handleRequestRide = async () => {
         if (!rideDetails) return;
@@ -145,6 +177,16 @@ export default function RideRequestScreen() {
                         title="Destination"
                         pinColor="#FF3B30"
                     />
+                    {driverLocation && (
+                        <Marker
+                            coordinate={driverLocation}
+                            title="Driver"
+                        >
+                            <View style={styles.driverMarker}>
+                                <Ionicons name="car" size={20} color="#FFFFFF" />
+                            </View>
+                        </Marker>
+                    )}
                     <Polyline
                         coordinates={[pickupCoords, destinationCoords]}
                         strokeColor="#6C006C"
@@ -153,12 +195,12 @@ export default function RideRequestScreen() {
                 </MapView>
             </View>
 
-            <ThemedView style={styles.bottomSheet} px={24} py={30}>
+            <View style={styles.bottomSheet}>
                 {state === 'request' && (
-                    <>
+                    <ThemedView px={24} py={30} bg="transparent">
                         <View style={styles.dragIndicator} />
                         {isFetchingEstimates ? (
-                            <ThemedView py={20} align="center">
+                            <ThemedView py={20} align="center" bg="transparent">
                                 <ActivityIndicator color="#6C006C" />
                                 <ThemedText size="sm" style={{ marginTop: 8 }}>Calculating fare...</ThemedText>
                             </ThemedView>
@@ -180,7 +222,7 @@ export default function RideRequestScreen() {
                                 </ThemedView>
                             </ThemedView>
                         ) : (
-                            <ThemedView py={20} align="center">
+                            <ThemedView py={20} align="center" bg="transparent">
                                 <ThemedText color="#FF3B30">Estimates unavailable</ThemedText>
                             </ThemedView>
                         )}
@@ -194,21 +236,52 @@ export default function RideRequestScreen() {
                         <ThemedText size="xs" color="#687076" align="center" style={styles.hint}>
                             You will be notified when a driver accepts.
                         </ThemedText>
-                    </>
+                    </ThemedView>
                 )}
 
                 {state === 'searching' && (
-                    <ThemedView align="center" py={20}>
-                        <ActivityIndicator size="large" color="#6C006C" style={styles.loader} />
-                        <ThemedText size="xl" weight="bold" style={styles.statusText}>
-                            Looking for nearby drivers…
-                        </ThemedText>
-                        <ThemedText color="#687076">This may take a few seconds.</ThemedText>
+                    <ThemedView px={24} py={30} bg="transparent">
+                        <ThemedView align="center" py={10} bg="transparent">
+                            <ActivityIndicator size="large" color="#6C006C" style={styles.loader} />
+                            <ThemedText size="xl" weight="bold" style={styles.statusText}>
+                                {priceOffers.length > 0 ? 'Review offers' : 'Searching for drivers…'}
+                            </ThemedText>
+                            <ThemedText color="#687076">
+                                {priceOffers.length > 0 ? `Drivers are bidding for your ride` : 'This may take a few seconds.'}
+                            </ThemedText>
+                        </ThemedView>
+
+                        <ScrollView style={styles.offersList} showsVerticalScrollIndicator={false}>
+                            {priceOffers.map((offer, index) => (
+                                <ThemedView key={offer.id || index} style={styles.offerCard} p={16} flexDirection="row" align="center">
+                                    <View style={styles.miniAvatar} />
+                                    <ThemedView ml={12} bg="transparent">
+                                        <ThemedText weight="bold">{offer.driverName}</ThemedText>
+                                        <ThemedText size="xs" color="#687076">{offer.vehicleModel}</ThemedText>
+                                    </ThemedView>
+                                    <ThemedView ml="auto" align="flex-end" bg="transparent">
+                                        <ThemedText size="lg" weight="bold" color="#6C006C">₦{offer.offeredPrice.toLocaleString()}</ThemedText>
+                                        <TouchableOpacity onPress={() => handleAcceptOffer(offer)}>
+                                            <ThemedView bg="#6C006C" px={16} py={8} style={{ borderRadius: 10, marginTop: 4 }}>
+                                                <ThemedText color="#FFFFFF" size="xs" weight="bold">Accept</ThemedText>
+                                            </ThemedView>
+                                        </TouchableOpacity>
+                                    </ThemedView>
+                                </ThemedView>
+                            ))}
+                        </ScrollView>
+
+                        <ThemedButton
+                            text="Cancel Search"
+                            variant="outline"
+                            onPress={() => router.back()}
+                            style={styles.cancelButton}
+                        />
                     </ThemedView>
                 )}
 
                 {state === 'found' && driverInfo && (
-                    <>
+                    <ThemedView px={24} py={30} bg="transparent">
                         <ThemedText size="lg" weight="bold" color="#6C006C" style={styles.foundHeader}>
                             Driver on the way
                         </ThemedText>
@@ -239,9 +312,9 @@ export default function RideRequestScreen() {
                             onPress={() => router.back()}
                             style={styles.cancelButton}
                         />
-                    </>
+                    </ThemedView>
                 )}
-            </ThemedView>
+            </View>
         </ThemedView>
     );
 }
@@ -333,6 +406,30 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         height: 60,
         borderColor: '#FF3B30',
-    }
+    },
+    driverMarker: {
+        backgroundColor: '#6C006C',
+        padding: 4,
+        borderRadius: 12,
+        borderWidth: 2,
+        borderColor: '#FFFFFF',
+    },
+    offersList: {
+        maxHeight: 250,
+        marginVertical: 10,
+    },
+    offerCard: {
+        backgroundColor: '#F9FAFB',
+        borderRadius: 16,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: '#F3F4F6',
+    },
+    miniAvatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#E5E7EB',
+    },
 });
 
