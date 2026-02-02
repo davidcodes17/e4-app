@@ -17,7 +17,7 @@ import Animated, {
     withTiming
 } from 'react-native-reanimated';
 
-const index = () => {
+const OnboardingScreen = () => {
     const router = useRouter();
     const carTranslateX = useSharedValue(500);
     const carTranslateY = useSharedValue(0);
@@ -117,7 +117,7 @@ const index = () => {
                 </ThemedView>
             </ThemedView>
         </LinearGradient>
-    )
-}
+    );
+};
 
-export default index
+export default OnboardingScreen;

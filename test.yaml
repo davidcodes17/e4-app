@@ -1,0 +1,446 @@
+name: Deploy to Production Environment
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: eu-west-1
+  ENVIRONMENT: prod
+  PROJECT_NAME: myrtl
+
+jobs:
+  deploy:
+    name: Build and Deploy to Production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.PROD_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.PROD_AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Get ECR repository URL
+        id: get-ecr
+        run: |
+          ECR_REPO=$(aws ecr describe-repositories \
+            --repository-names ${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'repositories[0].repositoryUri' \
+            --output text)
+          echo "ecr_repository=$ECR_REPO" >> $GITHUB_OUTPUT
+
+      - name: Build Docker image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}
+          ECR_REPOSITORY_URL: ${{ steps.get-ecr.outputs.ecr_repository }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build the Docker image
+          docker build -t ${{ env.ECR_REPOSITORY_URL }}:$IMAGE_TAG .
+          docker tag ${{ env.ECR_REPOSITORY_URL }}:$IMAGE_TAG ${{ env.ECR_REPOSITORY_URL }}:latest
+
+          # Output the full image name
+          echo "image=${{ env.ECR_REPOSITORY_URL }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "image_latest=${{ env.ECR_REPOSITORY_URL }}:latest" >> $GITHUB_OUTPUT
+
+      - name: Push Docker image to ECR
+        env:
+          IMAGE: ${{ steps.build-image.outputs.image }}
+          IMAGE_LATEST: ${{ steps.build-image.outputs.image_latest }}
+        run: |
+          docker push $IMAGE
+          docker push $IMAGE_LATEST
+          echo "Pushed image: $IMAGE"
+          echo "Pushed image: $IMAGE_LATEST"
+
+      - name: Verify GitHub Secrets are available
+        run: |
+          echo "Checking if required secrets are set..."
+
+          MISSING_SECRETS=()
+
+          if [ -z "${{ secrets.PROD_DB_CREDENTIALS }}" ]; then MISSING_SECRETS+=("PROD_DB_CREDENTIALS"); fi
+          if [ -z "${{ secrets.PROD_DB_USERNAME }}" ]; then MISSING_SECRETS+=("PROD_DB_USERNAME"); fi
+          if [ -z "${{ secrets.PROD_DB_PASSWORD }}" ]; then MISSING_SECRETS+=("PROD_DB_PASSWORD"); fi
+          if [ -z "${{ secrets.PROD_DB_URL }}" ]; then MISSING_SECRETS+=("PROD_DB_URL"); fi
+          if [ -z "${{ secrets.JWT_SECRET }}" ]; then MISSING_SECRETS+=("JWT_SECRET"); fi
+          if [ -z "${{ secrets.PROD_MAIL_SMTP_AUTH }}" ]; then MISSING_SECRETS+=("PROD_MAIL_SMTP_AUTH"); fi
+          if [ -z "${{ secrets.PROD_MAIL_SMTP_STARTTLS }}" ]; then MISSING_SECRETS+=("PROD_MAIL_SMTP_STARTTLS"); fi
+          if [ -z "${{ secrets.PROD_FLW_KIDS_ASSURE }}" ]; then MISSING_SECRETS+=("PROD_FLW_KIDS_ASSURE"); fi
+          if [ -z "${{ secrets.PROD_FLW_MONEY_MARKET }}" ]; then MISSING_SECRETS+=("PROD_FLW_MONEY_MARKET"); fi
+          if [ -z "${{ secrets.PROD_FLW_INVEST_MIX }}" ]; then MISSING_SECRETS+=("PROD_FLW_INVEST_MIX"); fi
+          if [ -z "${{ secrets.PROD_FLW_THRIFT }}" ]; then MISSING_SECRETS+=("PROD_FLW_THRIFT"); fi
+          if [ -z "${{ secrets.PROD_PLUNK_URL }}" ]; then MISSING_SECRETS+=("PROD_PLUNK_URL"); fi
+          if [ -z "${{ secrets.PROD_PLUNK_API_KEY }}" ]; then MISSING_SECRETS+=("PROD_PLUNK_API_KEY"); fi
+          if [ -z "${{ secrets.PROD_APP_HOST }}" ]; then MISSING_SECRETS+=("PROD_APP_HOST"); fi
+          if [ -z "${{ secrets.PROD_FRONTEND_URL }}" ]; then MISSING_SECRETS+=("PROD_FRONTEND_URL"); fi
+          if [ -z "${{ secrets.PROD_CORS_ORIGIN }}" ]; then MISSING_SECRETS+=("PROD_CORS_ORIGIN"); fi
+          if [ -z "${{ secrets.PROD_FLW_TREASURY_NOTE }}" ]; then MISSING_SECRETS+=("PROD_FLW_TREASURY_NOTE"); fi
+          if [ -z "${{ secrets.PROD_SENTRY_AUTH_TOKEN }}" ]; then MISSING_SECRETS+=("PROD_SENTRY_AUTH_TOKEN"); fi
+          if [ -z "${{ secrets.PROD_SENTRY_TRACES_SAMPLE_RATE }}" ]; then MISSING_SECRETS+=("PROD_SENTRY_TRACES_SAMPLE_RATE"); fi
+          if [ -z "${{ secrets.PROD_SENTRY_SEND_DEFAULT_PII }}" ]; then MISSING_SECRETS+=("PROD_SENTRY_SEND_DEFAULT_PII"); fi
+          if [ -z "${{ secrets.PROD_ENVIRONMENT }}" ]; then MISSING_SECRETS+=("PROD_ENVIRONMENT"); fi
+          if [ -z "${{ secrets.APP_VERSION }}" ]; then MISSING_SECRETS+=("APP_VERSION"); fi
+          if [ -z "${{ secrets.PROD_SENTRY_DSN }}" ]; then MISSING_SECRETS+=("PROD_SENTRY_DSN"); fi
+          if [ -z "${{ secrets.PROD_MYWEALTH_API_HOST }}" ]; then MISSING_SECRETS+=("PROD_MYWEALTH_API_HOST"); fi
+          if [ -z "${{ secrets.PROD_MYWEALTH_TENANT_ID }}" ]; then MISSING_SECRETS+=("PROD_MYWEALTH_TENANT_ID"); fi
+          if [ -z "${{ secrets.PROD_MYWEALTH_CLIENT_GROUP_ID }}" ]; then MISSING_SECRETS+=("PROD_MYWEALTH_CLIENT_GROUP_ID"); fi
+          if [ -z "${{ secrets.PROD_MYWEALTH_PRODUCT_ID }}" ]; then MISSING_SECRETS+=("PROD_MYWEALTH_PRODUCT_ID"); fi
+          if [ -z "${{ secrets.PROD_MYWEALTH_DAEMON_USERNAME }}" ]; then MISSING_SECRETS+=("PROD_MYWEALTH_DAEMON_USERNAME"); fi
+          if [ -z "${{ secrets.PROD_MYWEALTH_DAEMON_PASSWORD }}" ]; then MISSING_SECRETS+=("PROD_MYWEALTH_DAEMON_PASSWORD"); fi
+          if [ -z "${{ secrets.PROD_QOREID_API_HOST }}" ]; then MISSING_SECRETS+=("PROD_QOREID_API_HOST"); fi
+          if [ -z "${{ secrets.PROD_QOREID_CLIENT_ID }}" ]; then MISSING_SECRETS+=("PROD_QOREID_CLIENT_ID"); fi
+          if [ -z "${{ secrets.PROD_QOREID_SECRET }}" ]; then MISSING_SECRETS+=("PROD_QOREID_SECRET"); fi
+          if [ -z "${{ secrets.PROD_GEMINI_API_HOST }}" ]; then MISSING_SECRETS+=("PROD_GEMINI_API_HOST"); fi
+          if [ -z "${{ secrets.PROD_GEMINI_API_KEY }}" ]; then MISSING_SECRETS+=("PROD_GEMINI_API_KEY"); fi
+          if [ -z "${{ secrets.PROD_CORS_ALLOWED_ORIGINS }}" ]; then MISSING_SECRETS+=("PROD_CORS_ALLOWED_ORIGINS"); fi
+          if [ -z "${{ secrets.PROD_FLUTTERWAVE_API_BASE_URL }}" ]; then MISSING_SECRETS+=("PROD_FLUTTERWAVE_API_BASE_URL"); fi
+          if [ -z "${{ secrets.PROD_FLW_MONEY_MARKET_PUBLIC }}" ]; then MISSING_SECRETS+=("PROD_FLW_MONEY_MARKET_PUBLIC"); fi
+          if [ -z "${{ secrets.PROD_FLW_MONEY_MARKET_SECRET }}" ]; then MISSING_SECRETS+=("PROD_FLW_MONEY_MARKET_SECRET"); fi
+          if [ -z "${{ secrets.PROD_FLW_MONEY_MARKET_ENCRYPTION }}" ]; then MISSING_SECRETS+=("PROD_FLW_MONEY_MARKET_ENCRYPTION"); fi
+          if [ -z "${{ secrets.PROD_FLW_BALANCED_PLUS_PUBLIC }}" ]; then MISSING_SECRETS+=("PROD_FLW_BALANCED_PLUS_PUBLIC"); fi
+          if [ -z "${{ secrets.PROD_FLW_BALANCED_PLUS_SECRET }}" ]; then MISSING_SECRETS+=("PROD_FLW_BALANCED_PLUS_SECRET"); fi
+          if [ -z "${{ secrets.PROD_FLW_BALANCED_PLUS_ENCRYPTION }}" ]; then MISSING_SECRETS+=("PROD_FLW_BALANCED_PLUS_ENCRYPTION"); fi
+          if [ -z "${{ secrets.PROD_FLW_DOLLAR_SHIELD_PUBLIC }}" ]; then MISSING_SECRETS+=("PROD_FLW_DOLLAR_SHIELD_PUBLIC"); fi
+          if [ -z "${{ secrets.PROD_FLW_DOLLAR_SHIELD_SECRET }}" ]; then MISSING_SECRETS+=("PROD_FLW_DOLLAR_SHIELD_SECRET"); fi
+          if [ -z "${{ secrets.PROD_FLW_DOLLAR_SHIELD_ENCRYPTION }}" ]; then MISSING_SECRETS+=("PROD_FLW_DOLLAR_SHIELD_ENCRYPTION"); fi
+          if [ -z "${{ secrets.PROD_CLOUD_AWS_REGION_STATIC }}" ]; then MISSING_SECRETS+=("PROD_CLOUD_AWS_REGION_STATIC"); fi
+          if [ -z "${{ secrets.PROD_CLOUD_AWS_ACCESS_KEY }}" ]; then MISSING_SECRETS+=("PROD_CLOUD_AWS_ACCESS_KEY"); fi
+          if [ -z "${{ secrets.PROD_CLOUD_AWS_SECRET_KEY }}" ]; then MISSING_SECRETS+=("PROD_CLOUD_AWS_SECRET_KEY"); fi
+          if [ -z "${{ secrets.PROD_AWS_BUCKET_NAME }}" ]; then MISSING_SECRETS+=("PROD_AWS_BUCKET_NAME"); fi
+          if [ -z "${{ secrets.PROD_AWS_REGION }}" ]; then MISSING_SECRETS+=("PROD_AWS_REGION"); fi
+
+
+          if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
+            echo "ERROR: Missing required GitHub secrets:"
+            printf '%s\n' "${MISSING_SECRETS[@]}"
+            exit 1
+          else
+            echo "✓ All required secrets are set"
+          fi
+
+      - name: Create new task definition with secrets
+        id: task-def
+        run: |
+          cat > task-definition.json << 'EOF'
+          {
+            "family": "myrtl-prod",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "arn:aws:iam::419344669698:role/myrtl-prod-ecs-exec-20251215015623101000000002",
+            "taskRoleArn": "arn:aws:iam::419344669698:role/myrtl-prod-ecs-task-20251215015623167200000005",
+            "containerDefinitions": [
+              {
+                "cpu": 0,
+                "environment": [
+                  {
+                    "name": "DB_HOST",
+                    "value": "myrtl-prod-2025121501565790850000001a.cdeiigawy1cd.eu-west-1.rds.amazonaws.com"
+                  },
+                  {
+                    "name": "ENVIRONMENT",
+                    "value": "prod"
+                  },
+                  {
+                    "name": "DB_CREDENTIALS",
+                    "value": "${{ secrets.PROD_DB_CREDENTIALS }}"
+                  },
+                  {
+                    "name": "DB_USERNAME",
+                    "value": "${{ secrets.PROD_DB_USERNAME }}"
+                  },
+                  {
+                    "name": "DB_PASSWORD",
+                    "value": "${{ secrets.PROD_DB_PASSWORD }}"
+                  },
+                  {
+                    "name": "DB_URL",
+                    "value": "${{ secrets.PROD_DB_URL }}"
+                  },
+                  {
+                    "name": "JWT_SECRET",
+                    "value": "${{ secrets.JWT_SECRET }}"
+                  },
+                  {
+                    "name": "MAIL_SMTP_AUTH",
+                    "value": "${{ secrets.PROD_MAIL_SMTP_AUTH }}"
+                  },
+                  {
+                    "name": "MAIL_SMTP_STARTTLS",
+                    "value": "${{ secrets.PROD_MAIL_SMTP_STARTTLS }}"
+                  },
+                  {
+                    "name": "FLW_KIDS_ASSURE",
+                    "value": "${{ secrets.PROD_FLW_KIDS_ASSURE }}"
+                  },
+                  {
+                    "name": "FLW_MONEY_MARKET",
+                    "value": "${{ secrets.PROD_FLW_MONEY_MARKET }}"
+                  },
+                  {
+                    "name": "FLW_INVEST_MIX",
+                    "value": "${{ secrets.PROD_FLW_INVEST_MIX }}"
+                  },
+                  {
+                    "name": "FLW_THRIFT",
+                    "value": "${{ secrets.PROD_FLW_THRIFT }}"
+                  },
+                  {
+                    "name": "CORS_ORIGIN",
+                    "value": "${{ secrets.PROD_CORS_ORIGIN }}"
+                  },
+                  {
+                    "name": "PLUNK_API_KEY",
+                    "value": "${{ secrets.PROD_PLUNK_API_KEY }}"
+                  },
+                  {
+                    "name": "PLUNK_URL",
+                    "value": "${{ secrets.PROD_PLUNK_URL }}"
+                  },
+                  {
+                    "name": "APP_HOST",
+                    "value": "${{ secrets.PROD_APP_HOST }}"
+                  },
+                  {
+                    "name": "FRONTEND_URL",
+                    "value": "${{ secrets.PROD_FRONTEND_URL }}"
+                  },
+                  {
+                    "name": "FLW_TREASURY_NOTE",
+                    "value": "${{ secrets.PROD_FLW_TREASURY_NOTE }}"
+                  },
+                  {
+                    "name": "SENTRY_AUTH_TOKEN",
+                    "value": "${{ secrets.PROD_SENTRY_AUTH_TOKEN }}"
+                  },
+                  {
+                    "name": "SENTRY_TRACES_SAMPLE_RATE",
+                    "value": "${{ secrets.PROD_SENTRY_TRACES_SAMPLE_RATE }}"
+                  },
+                  {
+                    "name": "SENTRY_SEND_DEFAULT_PII",
+                    "value": "${{ secrets.PROD_SENTRY_SEND_DEFAULT_PII }}"
+                  },
+                  {
+                    "name": "ENVIRONMENT",
+                    "value": "${{ secrets.PROD_ENVIRONMENT }}"
+                  },
+                  {
+                    "name": "APP_VERSION",
+                    "value": "${{ secrets.APP_VERSION }}"
+                  },
+                  {
+                    "name": "SENTRY_DSN",
+                    "value": "${{ secrets.PROD_SENTRY_DSN }}"
+                  },
+                  {
+                    "name": "MYWEALTH_API_HOST",
+                    "value": "${{ secrets.PROD_MYWEALTH_API_HOST }}"
+                  },
+                   {
+                    "name": "MYWEALTH_TENANT_ID",
+                    "value": "${{ secrets.PROD_MYWEALTH_TENANT_ID }}"
+                  },
+                  {
+                    "name": "MYWEALTH_CLIENT_GROUP_ID",
+                    "value": "${{ secrets.PROD_MYWEALTH_CLIENT_GROUP_ID }}"
+                  },
+                  {
+                    "name": "MYWEALTH_PRODUCT_ID",
+                    "value": "${{ secrets.PROD_MYWEALTH_PRODUCT_ID }}"
+                  },
+                  {
+                    "name": "MYWEALTH_DAEMON_USERNAME",
+                    "value": "${{ secrets.PROD_MYWEALTH_DAEMON_USERNAME }}"
+                  },
+                  {
+                    "name": "MYWEALTH_DAEMON_PASSWORD",
+                    "value": "${{ secrets.PROD_MYWEALTH_DAEMON_PASSWORD }}"
+                  },
+                  {
+                    "name": "QOREID_API_HOST",
+                    "value": "${{ secrets.PROD_QOREID_API_HOST }}"
+                  },
+                  {
+                    "name": "QOREID_CLIENT_ID",
+                    "value": "${{ secrets.PROD_QOREID_CLIENT_ID }}"
+                  },
+                  {
+                    "name": "QOREID_SECRET",
+                    "value": "${{ secrets.PROD_QOREID_SECRET }}"
+                  },
+                  {
+                    "name": "GEMINI_API_HOST",
+                    "value": "${{ secrets.PROD_GEMINI_API_HOST }}"
+                  },
+                  {
+                    "name": "GEMINI_API_KEY",
+                    "value": "${{ secrets.PROD_GEMINI_API_KEY }}"
+                  },
+                  {
+                    "name": "CORS_ALLOWED_ORIGINS",
+                    "value": "${{ secrets.PROD_CORS_ALLOWED_ORIGINS }}"
+                  },
+                  {
+                    "name": "FLUTTERWAVE_API_BASE_URL",
+                    "value": "${{ secrets.PROD_FLUTTERWAVE_API_BASE_URL }}"
+                  },
+                  {
+                    "name": "FLW_MONEY_MARKET_PUBLIC",
+                    "value": "${{ secrets.PROD_FLW_MONEY_MARKET_PUBLIC }}"
+                  },
+                  {
+                    "name": "FLW_MONEY_MARKET_SECRET",
+                    "value": "${{ secrets.PROD_FLW_MONEY_MARKET_SECRET }}"
+                  },
+                  {
+                    "name": "FLW_MONEY_MARKET_ENCRYPTION",
+                    "value": "${{ secrets.PROD_FLW_MONEY_MARKET_ENCRYPTION }}"
+                  },
+                  {
+                    "name": "FLW_BALANCED_PLUS_PUBLIC",
+                    "value": "${{ secrets.PROD_FLW_BALANCED_PLUS_PUBLIC }}"
+                  },
+                  {
+                    "name": "FLW_BALANCED_PLUS_SECRET",
+                    "value": "${{ secrets.PROD_FLW_BALANCED_PLUS_SECRET }}"
+                  },
+                  {
+                    "name": "FLW_BALANCED_PLUS_ENCRYPTION",
+                    "value": "${{ secrets.PROD_FLW_BALANCED_PLUS_ENCRYPTION }}"
+                  },
+                  {
+                    "name": "FLW_DOLLAR_SHIELD_PUBLIC",
+                    "value": "${{ secrets.PROD_FLW_DOLLAR_SHIELD_PUBLIC }}"
+                  },
+                  {
+                    "name": "FLW_DOLLAR_SHIELD_SECRET",
+                    "value": "${{ secrets.PROD_FLW_DOLLAR_SHIELD_SECRET }}"
+                  },
+                  {
+                    "name": "FLW_DOLLAR_SHIELD_ENCRYPTION",
+                    "value": "${{ secrets.PROD_FLW_DOLLAR_SHIELD_ENCRYPTION }}"
+                  },
+                  {
+                    "name": "CLOUD_AWS_REGION_STATIC",
+                    "value": "${{ secrets.PROD_CLOUD_AWS_REGION_STATIC }}"
+                  },
+                  {
+                    "name": "CLOUD_AWS_ACCESS_KEY",
+                    "value": "${{ secrets.PROD_CLOUD_AWS_ACCESS_KEY }}"
+                  },
+                  {
+                    "name": "CLOUD_AWS_SECRET_KEY",
+                    "value": "${{ secrets.PROD_CLOUD_AWS_SECRET_KEY }}"
+                  },
+                  {
+                    "name": "AWS_BUCKET_NAME",
+                    "value": "${{ secrets.PROD_AWS_BUCKET_NAME }}"
+                  },
+                  {
+                    "name": "AWS_REGION",
+                    "value": "${{ secrets.PROD_AWS_REGION }}"
+                  }
+
+                          
+                ],
+                "essential": true,
+                "healthCheck": {
+                  "command": [
+                    "CMD-SHELL",
+                    "curl -f http://localhost:8080/health || exit 1"
+                  ],
+                  "interval": 30,
+                  "retries": 3,
+                  "startPeriod": 60,
+                  "timeout": 5
+                },
+                "image": "${{ steps.build-image.outputs.image }}",
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/myrtl-prod",
+                    "awslogs-region": "eu-west-1",
+                    "awslogs-stream-prefix": "ecs"
+                  }
+                },
+                "mountPoints": [],
+                "name": "myrtl-app",
+                "portMappings": [
+                  {
+                    "containerPort": 8080,
+                    "hostPort": 8080,
+                    "protocol": "tcp"
+                  }
+                ],
+                "systemControls": [],
+                "volumesFrom": []
+              }
+            ],
+            "placementConstraints": [],
+            "volumes": []
+          }
+          EOF
+
+          echo "Task definition created"
+
+      - name: Register new task definition
+        id: register-task-def
+        run: |
+          TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition.json \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "task_definition_arn=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
+          echo "Registered task definition: $TASK_DEF_ARN"
+
+      - name: Get ECS cluster and service details
+        id: ecs-details
+        run: |
+          CLUSTER_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}-cluster"
+          SERVICE_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}-service"
+
+          echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+          echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Update ECS service with new task definition
+        run: |
+          echo "Updating service with new task definition..."
+
+          aws ecs update-service \
+            --cluster ${{ steps.ecs-details.outputs.cluster_name }} \
+            --service ${{ steps.ecs-details.outputs.service_name }} \
+            --task-definition ${{ steps.register-task-def.outputs.task_definition_arn }} \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+          echo "Service updated with new task definition"
+
+      - name: Wait for service to stabilize
+        run: |
+          echo "Waiting for service to become stable..."
+
+          aws ecs wait services-stable \
+            --cluster ${{ steps.ecs-details.outputs.cluster_name }} \
+            --services ${{ steps.ecs-details.outputs.service_name }} \
+            --region ${{ env.AWS_REGION }}
+
+          echo "Service is stable"

@@ -18,7 +18,11 @@ apiClient.interceptors.request.use(async (config) => {
 });
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // We keep the full response for now to avoid breaking existing service logic
+    // but in a future refactor we could return response.data.data directly
+    return response;
+  },
   (error) => {
     // Handle global errors (e.g., 401 logout)
     if (error.response?.status === 401) {

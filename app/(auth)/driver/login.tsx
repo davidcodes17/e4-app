@@ -29,7 +29,7 @@ export default function DriverLoginScreen() {
         setIsLoading(true);
         try {
             const response = await DriverService.login(form.email, form.password);
-            const role = response.data?.role || response.data?.data?.role;
+            const role = response.data?.role;
 
             if (role === 'DRIVER') {
                 router.replace('/(driver)/home');

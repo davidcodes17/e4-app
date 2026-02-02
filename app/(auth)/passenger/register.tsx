@@ -6,11 +6,11 @@ import { AuthService } from '@/services/auth.service';
 import { validatePassword, validatePhone, validateRequired } from '@/utils/validation';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 
 export default function PassengerRegisterScreen() {
     const router = useRouter();
-    const { email, token } = useLocalSearchParams<{ email: string, token: string }>();
+    const { email } = useLocalSearchParams<{ email: string }>();
     const [isLoading, setIsLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string | null>>({});
     const [form, setForm] = useState({
@@ -39,13 +39,17 @@ export default function PassengerRegisterScreen() {
 
         setIsLoading(true);
         try {
-            await AuthService.createAccount({
+            const response = await AuthService.createAccount({
                 ...form,
                 email,
-                token,
                 gender: form.gender.toUpperCase()
             });
-            router.replace('/(passenger)/home');
+
+            if (response.success) {
+                router.replace('/(passenger)/home');
+            } else {
+                Alert.alert('Error', response.message || 'Failed to create account');
+            }
         } catch (error: any) {
             Alert.alert('Error', error.response?.data?.message || 'Failed to create account.');
         } finally {
@@ -157,7 +161,7 @@ export default function PassengerRegisterScreen() {
     );
 }
 
-import { TouchableOpacity } from 'react-native';
+
 
 const styles = StyleSheet.create({
     container: {

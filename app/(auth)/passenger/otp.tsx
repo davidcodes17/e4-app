@@ -44,11 +44,14 @@ export default function PassengerOtpScreen() {
         setIsLoading(true);
         try {
             const response = await AuthService.validateOtp(email, otp);
-            const token = response?.data?.data?.accessToken;
-            router.push({
-                pathname: '/(auth)/passenger/register',
-                params: { email, token }
-            });
+            if (response.success) {
+                router.push({
+                    pathname: '/(auth)/passenger/register',
+                    params: { email }
+                });
+            } else {
+                Alert.alert('Error', response.message || 'Verification failed');
+            }
         } catch (error: any) {
             Alert.alert('Error', error.response?.data?.message || 'Invalid OTP. Please try again.');
         } finally {
@@ -100,7 +103,7 @@ export default function PassengerOtpScreen() {
 
                         <ThemedView flexDirection="row" align="center" style={styles.resendContainer}>
                             <ThemedText size="sm" color="#687076">
-                                Didn't receive the code?{' '}
+                                Didn&apos;t receive the code?{' '}
                             </ThemedText>
                             <TouchableOpacity onPress={handleResend} disabled={timer > 0}>
                                 <ThemedText size="sm" weight="bold" color={timer > 0 ? '#999' : '#6C006C'}>

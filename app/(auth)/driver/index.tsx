@@ -2,7 +2,7 @@ import { ThemedButton } from '@/components/themed-button';
 import { ThemedInput } from '@/components/themed-input';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { DriverService } from '@/services/driver.service';
+import { AuthService } from '@/services/auth.service';
 import { validateEmail } from '@/utils/validation';
 import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';
@@ -23,11 +23,15 @@ export default function DriverEnterEmailScreen() {
         setEmailError(null);
         setIsLoading(true);
         try {
-            await DriverService.sendOtp(email);
-            router.push({
-                pathname: '/(auth)/driver/otp',
-                params: { email }
-            });
+            const response = await AuthService.sendOtp(email);
+            if (response.success) {
+                router.push({
+                    pathname: '/(auth)/driver/otp',
+                    params: { email }
+                });
+            } else {
+                Alert.alert('Error', response.message || 'Failed to send OTP');
+            }
         } catch (error: any) {
             Alert.alert('Error', error.response?.data?.message || 'Failed to send OTP.');
         } finally {

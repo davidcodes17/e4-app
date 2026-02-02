@@ -9,7 +9,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacit
 
 export default function DriverPersonalInfoScreen() {
     const router = useRouter();
-    const { email, token } = useLocalSearchParams<{ email: string, token: string }>();
+    const { email } = useLocalSearchParams<{ email: string }>();
     const [isLoading, setIsLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string | null>>({});
     const [form, setForm] = useState({
@@ -35,7 +35,7 @@ export default function DriverPersonalInfoScreen() {
 
         router.push({
             pathname: '/(auth)/driver/vehicle-info',
-            params: { ...form, email, token }
+            params: { ...form, email }
         });
     };
 

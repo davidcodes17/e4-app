@@ -2,7 +2,7 @@ import { ThemedButton } from '@/components/themed-button';
 import { ThemedInput } from '@/components/themed-input';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { DriverService } from '@/services/driver.service';
+import { AuthService } from '@/services/auth.service';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
@@ -17,12 +17,15 @@ export default function DriverOtpScreen() {
         if (!email || otp.length < 6) return;
         setIsLoading(true);
         try {
-            const response = await DriverService.validateOtp(email, otp);
-            const token = response?.data?.data?.accessToken;
-            router.push({
-                pathname: '/(auth)/driver/personal-info',
-                params: { email, token }
-            });
+            const response = await AuthService.validateOtp(email, otp);
+            if (response.success) {
+                router.push({
+                    pathname: '/(auth)/driver/personal-info',
+                    params: { email }
+                });
+            } else {
+                Alert.alert('Error', response.message || 'Verification failed');
+            }
         } catch (error: any) {
             Alert.alert('Error', error.response?.data?.message || 'Invalid code.');
         } finally {
@@ -33,8 +36,12 @@ export default function DriverOtpScreen() {
     const handleResend = async () => {
         if (!email) return;
         try {
-            await DriverService.sendOtp(email);
-            Alert.alert('Success', 'Verification code resent.');
+            const response = await AuthService.sendOtp(email);
+            if (response.success) {
+                Alert.alert('Success', 'Verification code resent.');
+            } else {
+                Alert.alert('Error', response.message || 'Failed to resend code.');
+            }
         } catch (error: any) {
             Alert.alert('Error', 'Failed to resend code.');
         }

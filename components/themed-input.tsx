@@ -45,7 +45,7 @@ export function ThemedInput({
     };
 
     return (
-        <ThemedView style={[styles.container, style]} bg="transparent">
+        <ThemedView style={[styles.container, style as any]} bg="transparent">
             {label && (
                 <ThemedText size="sm" weight="bold" color={activeColors.text} style={styles.label}>
                     {label}

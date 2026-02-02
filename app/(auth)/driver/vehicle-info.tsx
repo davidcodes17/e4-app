@@ -2,6 +2,7 @@ import { ThemedButton } from '@/components/themed-button';
 import { ThemedInput } from '@/components/themed-input';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { AuthService } from '@/services/auth.service';
 import { DriverService } from '@/services/driver.service';
 import { validateRequired } from '@/utils/validation';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -33,18 +34,34 @@ export default function DriverVehicleInfoScreen() {
         if (Object.values(newErrors).some(err => err !== null)) return;
         setIsLoading(true);
         try {
-            await DriverService.registerDriver({
-                ...params,
-                carName: form.vehicleName || `${form.brand} ${form.model}`,
+            const registerResponse = await DriverService.createAccount({
+                firstName: params.firstName,
+                lastName: params.lastName,
+                middleName: params.middleName,
+                phoneNumber: params.phoneNumber,
+                emailAddress: params.email,
+                password: params.password,
+                gender: params.gender?.toUpperCase(),
                 brand: form.brand,
                 model: form.model,
                 year: parseInt(form.year, 10) || 2022,
                 color: form.color,
                 plateNumber: form.plateNumber,
-                gender: params.gender?.toUpperCase(),
-                token: params.token
+                carName: form.vehicleName || `${form.brand} ${form.model}`
             });
-            router.replace('/(driver)/home');
+
+            if (registerResponse.success) {
+                // Auto-login after successful registration
+                const loginResponse = await AuthService.login(params.email, params.password);
+                if (loginResponse.success) {
+                    router.replace('/(driver)/home');
+                } else {
+                    Alert.alert('Success', 'Account created successfully! Please login.');
+                    router.replace('/(auth)/driver/login');
+                }
+            } else {
+                Alert.alert('Error', registerResponse.message || 'Registration failed.');
+            }
         } catch (error: any) {
             Alert.alert('Error', error.response?.data?.message || 'Registration failed.');
         } finally {

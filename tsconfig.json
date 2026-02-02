@@ -4,13 +4,10 @@
     "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-
     "module": "esnext",
-    "moduleResolution": "node",
-
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-
     "paths": {
       "@/*": ["./*"]
     }

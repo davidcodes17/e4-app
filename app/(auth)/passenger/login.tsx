@@ -29,12 +29,15 @@ export default function PassengerLoginScreen() {
         setIsLoading(true);
         try {
             const response = await AuthService.login(form.email, form.password);
-            const role = response.data?.role || response.data?.data?.role;
 
-            if (role === 'DRIVER') {
-                router.replace('/(driver)/home');
-            } else {
+            if (response.success) {
+                // Since the login response from the new docs only specifies 'token', 
+                // we might need to fetch the profile to get the role if not provided.
+                // However, for now, let's assume successful login goes to passenger home 
+                // unless we have logic to distinguish.
                 router.replace('/(passenger)/home');
+            } else {
+                Alert.alert('Error', response.message || 'Login failed');
             }
         } catch (error: any) {
             Alert.alert('Error', error.response?.data?.message || 'Login failed. Please check your credentials.');
@@ -106,7 +109,7 @@ export default function PassengerLoginScreen() {
 
                     <ThemedView style={styles.footer} align="center">
                         <ThemedText size="sm">
-                            Don't have an account?{' '}
+                            Don&apos;t have an account?{' '}
                             <Link href="/(auth)/passenger" style={styles.link}>
                                 <ThemedText size="sm" weight="bold" color="#6C006C">
                                     Sign up

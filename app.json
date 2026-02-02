@@ -13,10 +13,11 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE"
+        "backgroundColor": "#6C006C"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.david_codes.e4"
     },
     "web": {
       "output": "static",
@@ -30,17 +31,24 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#6C006C",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#6C006C"
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-maps"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "988c6a69-9473-4091-80aa-bc7de4d517b4"
+      }
     }
   }
 }
