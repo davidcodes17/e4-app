@@ -1,5 +1,9 @@
+import LocationSuggestions, {
+    LocationSuggestion,
+} from "@/components/location-suggestions";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { OpenStreetMapService } from "@/services/openstreetmap.service";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Location from "expo-location";
 import { Href, useRouter } from "expo-router";
@@ -12,7 +16,7 @@ import {
     StyleSheet,
     TextInput,
     TouchableOpacity,
-    View,
+    View
 } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
@@ -92,6 +96,236 @@ export default function PassengerHomeScreen() {
     null,
   );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showPickupSuggestions, setShowPickupSuggestions] = useState(false);
+  const [showDestinationSuggestions, setShowDestinationSuggestions] =
+    useState(false);
+  const [pickupSuggestions, setPickupSuggestions] = useState<
+    LocationSuggestion[]
+  >([]);
+  const [destinationSuggestions, setDestinationSuggestions] = useState<
+    LocationSuggestion[]
+  >([]);
+
+  // Mock data for saved and recent locations
+  const savedLocations: LocationSuggestion[] = [
+    {
+      id: "home",
+      name: "Home",
+      address: "45 Ilupeju Street, Lagos",
+      type: "saved",
+      icon: "home",
+    },
+    {
+      id: "work",
+      name: "Work",
+      address: "Tech Hub, Lekki, Lagos",
+      type: "saved",
+      icon: "briefcase",
+    },
+  ];
+
+  const recentLocations: LocationSuggestion[] = [
+    {
+      id: "recent-1",
+      name: "Lekki Phase 1",
+      address: "Lekki Phase 1, Lagos",
+      type: "recent",
+    },
+    {
+      id: "recent-2",
+      name: "VI Shopping Mall",
+      address: "Victoria Island, Lagos",
+      type: "recent",
+    },
+  ];
+
+  const popularLocations: LocationSuggestion[] = [
+    {
+      id: "popular-1",
+      name: "Murtala Muhammed Int'l Airport",
+      address: "Ikeja, Lagos",
+      type: "popular",
+    },
+    {
+      id: "popular-2",
+      name: "Lekki Toll Gate",
+      address: "Lekki-Epe Expressway",
+      type: "popular",
+    },
+  ];
+
+  // Handle pickup location change with OpenStreetMap (free)
+  const handlePickupChange = async (text: string) => {
+    setPickup(text);
+    if (text.length >= 2) {
+      try {
+        // Get Nominatim suggestions (free, no API key)
+        const predictions = await OpenStreetMapService.getPlacePredictions(
+          text,
+          location
+            ? {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+              }
+            : undefined,
+        );
+
+        // Convert to LocationSuggestion format, prioritize saved locations
+        const suggestions = [
+          ...savedLocations.filter(
+            (loc) =>
+              loc.name.toLowerCase().includes(text.toLowerCase()) ||
+              loc.address.toLowerCase().includes(text.toLowerCase()),
+          ),
+          ...predictions.map((pred, idx) => ({
+            id: `osm-pickup-${idx}`,
+            name: pred.main_text,
+            address: pred.secondary_text || pred.description,
+            type: "recent" as const,
+            placeId: pred.place_id,
+          })),
+        ];
+
+        setPickupSuggestions(suggestions.slice(0, 8));
+        setShowPickupSuggestions(true);
+      } catch (error) {
+        console.error("Error fetching pickup suggestions:", error);
+        // Fallback to local filtering
+        const filtered = [...savedLocations, ...recentLocations].filter(
+          (loc) =>
+            loc.name.toLowerCase().includes(text.toLowerCase()) ||
+            loc.address.toLowerCase().includes(text.toLowerCase()),
+        );
+        setPickupSuggestions(filtered);
+        setShowPickupSuggestions(true);
+      }
+    } else {
+      setShowPickupSuggestions(false);
+    }
+  };
+
+  // Handle destination location change with OpenStreetMap (free)
+  const handleDestinationChange = async (text: string) => {
+    setDestination(text);
+    if (text.length >= 2) {
+      try {
+        // Get Nominatim suggestions (free, no API key)
+        const predictions = await OpenStreetMapService.getPlacePredictions(
+          text,
+          location
+            ? {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+              }
+            : undefined,
+        );
+
+        // Convert to LocationSuggestion format, prioritize saved locations
+        const suggestions = [
+          ...savedLocations.filter(
+            (loc) =>
+              loc.name.toLowerCase().includes(text.toLowerCase()) ||
+              loc.address.toLowerCase().includes(text.toLowerCase()),
+          ),
+          ...recentLocations.filter(
+            (loc) =>
+              loc.name.toLowerCase().includes(text.toLowerCase()) ||
+              loc.address.toLowerCase().includes(text.toLowerCase()),
+          ),
+          ...predictions.map((pred, idx) => ({
+            id: `osm-dest-${idx}`,
+            name: pred.main_text,
+            address: pred.secondary_text || pred.description,
+            type: "popular" as const,
+            placeId: pred.place_id,
+          })),
+        ];
+
+        setDestinationSuggestions(suggestions.slice(0, 8));
+        setShowDestinationSuggestions(true);
+      } catch (error) {
+        console.error("Error fetching destination suggestions:", error);
+        // Fallback to local filtering
+        const filtered = [
+          ...savedLocations,
+          ...recentLocations,
+          ...popularLocations,
+        ].filter(
+          (loc) =>
+            loc.name.toLowerCase().includes(text.toLowerCase()) ||
+            loc.address.toLowerCase().includes(text.toLowerCase()),
+        );
+        setDestinationSuggestions(filtered);
+        setShowDestinationSuggestions(true);
+      }
+    } else {
+      setShowDestinationSuggestions(false);
+    }
+  };
+
+  // Handle selecting a pickup location
+  const handleSelectPickupLocation = (location: LocationSuggestion) => {
+    setPickup(location.address);
+    setShowPickupSuggestions(false);
+  };
+
+  // Handle selecting a destination location
+  const handleSelectDestinationLocation = (location: LocationSuggestion) => {
+    setDestination(location.address);
+    setShowDestinationSuggestions(false);
+  };
+
+  // Show default suggestions when field is focused
+  const handlePickupFocus = async () => {
+    if (pickup.length === 0) {
+      // Show saved and recent locations
+      setPickupSuggestions([...savedLocations, ...recentLocations]);
+      setShowPickupSuggestions(true);
+    }
+  };
+
+  const handleDestinationFocus = async () => {
+    if (destination.length === 0) {
+      try {
+        // Try to get nearby amenities using free OpenStreetMap
+        if (location) {
+          const nearbyPlaces = await OpenStreetMapService.searchNearbyAmenities(
+            location.coords.latitude,
+            location.coords.longitude,
+            ["restaurant", "shopping_mall", "supermarket", "cafe"],
+            8000,
+          );
+
+          const suggestions = [
+            ...savedLocations,
+            ...recentLocations,
+            ...nearbyPlaces.map((place) => ({
+              id: place.placeId,
+              name: place.name,
+              address: place.address,
+              type: "popular" as const,
+            })),
+          ];
+
+          setDestinationSuggestions(suggestions.slice(0, 10));
+        } else {
+          setDestinationSuggestions([
+            ...savedLocations,
+            ...recentLocations,
+            ...popularLocations,
+          ]);
+        }
+      } catch (error) {
+        console.error("Error fetching nearby places:", error);
+        setDestinationSuggestions([
+          ...savedLocations,
+          ...recentLocations,
+          ...popularLocations,
+        ]);
+      }
+      setShowDestinationSuggestions(true);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -195,37 +429,68 @@ export default function PassengerHomeScreen() {
             Hi, where are you going?
           </ThemedText>
 
-          <ThemedView style={styles.inputsWrapper}>
-            <ThemedView style={styles.inputRow}>
-              <Ionicons name="radio-button-on" size={20} color="#6C006C" />
-              <TextInput
-                style={styles.input}
-                placeholder="Pickup Location"
-                value={pickup}
-                onChangeText={setPickup}
-                placeholderTextColor="#999"
-              />
-            </ThemedView>
+          <View style={styles.inputsWrapperContainer}>
+            <View style={styles.inputsWrapperWithSuggestions}>
+              <ThemedView style={styles.inputsWrapper}>
+                <ThemedView style={styles.inputRow}>
+                  <Ionicons name="radio-button-on" size={20} color="#6C006C" />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Pickup Location"
+                    value={pickup}
+                    onChangeText={handlePickupChange}
+                    onFocus={handlePickupFocus}
+                    placeholderTextColor="#999"
+                  />
+                </ThemedView>
 
-            {/* <View style={styles.divider} /> */}
+                <ThemedView style={styles.inputRow}>
+                  <Ionicons name="location" size={20} color="#FF3B30" />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Where to?"
+                    value={destination}
+                    onChangeText={handleDestinationChange}
+                    onFocus={handleDestinationFocus}
+                    placeholderTextColor="#999"
+                  />
+                </ThemedView>
+              </ThemedView>
 
-            <ThemedView style={styles.inputRow}>
-              <Ionicons name="location" size={20} color="#FF3B30" />
-              <TextInput
-                style={styles.input}
-                placeholder="Where to?"
-                value={destination}
-                onChangeText={setDestination}
-                placeholderTextColor="#999"
-                onFocus={() => {
-                  // Navigate to ride request or search screen
-                }}
-              />
-            </ThemedView>
-          </ThemedView>
+              {/* Pickup Location Suggestions */}
+              {showPickupSuggestions && (
+                <View style={styles.suggestionsOverlay}>
+                  <LocationSuggestions
+                    suggestions={pickupSuggestions}
+                    onSelectLocation={handleSelectPickupLocation}
+                    visible={showPickupSuggestions}
+                  />
+                </View>
+              )}
+
+              {/* Destination Location Suggestions */}
+              {showDestinationSuggestions && (
+                <View style={styles.suggestionsOverlay}>
+                  <LocationSuggestions
+                    suggestions={destinationSuggestions}
+                    onSelectLocation={handleSelectDestinationLocation}
+                    visible={showDestinationSuggestions}
+                  />
+                </View>
+              )}
+            </View>
+          </View>
 
           <TouchableOpacity
-            style={styles.actionButton}
+            style={[
+              styles.actionButton,
+              {
+                marginTop:
+                  showPickupSuggestions || showDestinationSuggestions
+                    ? 200
+                    : 24,
+              },
+            ]}
             onPress={() =>
               router.push({
                 pathname: "/(passenger)/ride-request",
@@ -318,14 +583,33 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 10,
     paddingBottom: 40,
+    zIndex: 1,
+    overflow: "visible",
   },
   greeting: {
     marginBottom: 20,
+  },
+  inputsWrapperContainer: {
+    position: "relative",
+    zIndex: 10,
   },
   inputsWrapper: {
     backgroundColor: "#F3F4F6",
     borderRadius: 20,
     padding: 4,
+    zIndex: 10,
+  },
+  inputsWrapperWithSuggestions: {
+    position: "relative",
+    zIndex: 10,
+  },
+  suggestionsOverlay: {
+    position: "absolute",
+    top: 120,
+    left: 0,
+    right: 0,
+    zIndex: 999,
+    backgroundColor: "transparent",
   },
   inputRow: {
     flexDirection: "row",
@@ -348,7 +632,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 48,
   },
   actionButton: {
-    marginTop: 24,
+    zIndex: 5,
   },
   buttonInner: {
     height: 60,

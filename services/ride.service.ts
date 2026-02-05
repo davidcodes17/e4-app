@@ -19,13 +19,28 @@ export const RideService = {
     return response.data;
   },
 
+  async getMyTrips(): Promise<ApiResponse<Trip[]>> {
+    // Fetch authenticated user's trips (no email param needed, uses JWT)
+    const response = await apiClient.get("/api/v1/trips/my-trips");
+    // API returns nested structure: { success, data: { isSuccess, data: [trips] } }
+    const apiResponse = response.data;
+    const trips = apiResponse?.data?.data || [];
+
+    return {
+      success: apiResponse.success,
+      message: apiResponse.message,
+      data: trips,
+      timestamp: apiResponse.timestamp,
+    };
+  },
+
   async getTrips(email: string): Promise<ApiResponse<Trip[]>> {
     const response = await apiClient.get(`/api/v1/trips/user?email=${email}`);
     return response.data;
   },
 
-  async getDriverTrips(email: string): Promise<ApiResponse<Trip[]>> {
-    const response = await apiClient.get(`/api/v1/trips/driver?email=${email}`);
+  async getDriverTrips(driverId: string): Promise<ApiResponse<Trip[]>> {
+    const response = await apiClient.get(`/api/v1/trips/driver/${driverId}`);
     return response.data;
   },
 

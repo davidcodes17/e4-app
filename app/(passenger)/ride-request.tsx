@@ -1,19 +1,15 @@
+import { InlineLoader } from "@/components/common/loaders";
+import { useToast } from "@/components/common/toast-provider";
 import { ThemedButton } from "@/components/themed-button";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { DirectionsService } from "@/services/directions.service";
 import { RideService } from "@/services/ride.service";
 import SocketService from "@/services/socket.service";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import {
-    ActivityIndicator,
-    Alert,
-    ScrollView,
-    StyleSheet,
-    TouchableOpacity,
-    View,
-} from "react-native";
+import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE, Polyline } from "react-native-maps";
 
 type ScreenState = "request" | "searching" | "found";
@@ -31,8 +27,14 @@ interface DriverInfo {
   rating: string;
 }
 
+interface RouteCoordinate {
+  latitude: number;
+  longitude: number;
+}
+
 export default function RideRequestScreen() {
   const router = useRouter();
+  const toast = useToast();
   const { pickup, pickupLat, pickupLong, destination } = useLocalSearchParams<{
     pickup: string;
     pickupLat: string;
@@ -50,6 +52,8 @@ export default function RideRequestScreen() {
     latitude: number;
     longitude: number;
   } | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<RouteCoordinate[]>([]);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(true);
 
   // Coordinates logic
   const pickupCoords = pickupLat
@@ -60,6 +64,46 @@ export default function RideRequestScreen() {
     : { latitude: 6.4311, longitude: 3.4697 }; // Fallback
 
   const destinationCoords = { latitude: 6.4253, longitude: 3.4041 }; // Mock destination for demo
+
+  // Fetch directions and route
+  useEffect(() => {
+    const fetchDirections = async () => {
+      try {
+        setIsLoadingRoute(true);
+        const directions = await DirectionsService.getDirections(
+          pickupCoords.latitude,
+          pickupCoords.longitude,
+          destinationCoords.latitude,
+          destinationCoords.longitude
+        );
+
+        if (directions) {
+          setRouteCoordinates(directions.coordinates);
+          // Update ride details with real directions data
+          setRideDetails({
+            distance: directions.distance,
+            duration: DirectionsService.formatDuration(directions.duration),
+            fare: DirectionsService.calculateFare(directions.distance, directions.duration),
+          });
+        } else {
+          // Fallback to simple polyline if directions fail
+          setRouteCoordinates([pickupCoords, destinationCoords]);
+        }
+      } catch (error) {
+        console.error("Error fetching directions:", error);
+        toast.show({
+          type: "error",
+          title: "Route unavailable",
+          message: "Could not fetch directions. Using estimate.",
+        });
+        setRouteCoordinates([pickupCoords, destinationCoords]);
+      } finally {
+        setIsLoadingRoute(false);
+      }
+    };
+
+    fetchDirections();
+  }, []);
 
   useEffect(() => {
     const fetchEstimates = async () => {
@@ -75,7 +119,7 @@ export default function RideRequestScreen() {
         const apiData = response?.data as any;
         const estimateData = apiData?.data || apiData;
 
-        if (estimateData && estimateData.distance !== undefined) {
+        if (estimateData && estimateData.distance !== undefined && !rideDetails) {
           setRideDetails({
             distance: estimateData.distance,
             duration: estimateData.duration.toString(),
@@ -84,7 +128,11 @@ export default function RideRequestScreen() {
         }
       } catch (error) {
         console.error("Failed to fetch estimates:", error);
-        Alert.alert("Error", "Could not get ride estimates. Please try again.");
+        toast.show({
+          type: "error",
+          title: "Estimates unavailable",
+          message: "Could not get ride estimates. Please try again.",
+        });
       } finally {
         setIsFetchingEstimates(false);
       }
@@ -123,12 +171,17 @@ export default function RideRequestScreen() {
               });
               setState("found");
             } else if (update.status === "ARRIVED") {
-              Alert.alert(
-                "Arrived",
-                "Your driver has arrived at the pickup location.",
-              );
+              toast.show({
+                type: "info",
+                title: "Driver arrived",
+                message: "Your driver is at the pickup location.",
+              });
             } else if (update.status === "CANCELLED") {
-              Alert.alert("Cancelled", "Your trip has been cancelled.");
+              toast.show({
+                type: "warning",
+                title: "Trip cancelled",
+                message: "Your trip has been cancelled.",
+              });
               setState("request");
             }
           });
@@ -161,7 +214,11 @@ export default function RideRequestScreen() {
       await RideService.acceptOffer(offer.id);
       // Redirection logic usually handled by ride-status subscription
     } catch (error: any) {
-      Alert.alert("Error", "Failed to accept offer. It may have expired.");
+      toast.show({
+        type: "error",
+        title: "Offer failed",
+        message: "Failed to accept offer. It may have expired.",
+      });
       setIsLoading(false);
     }
   };
@@ -183,10 +240,11 @@ export default function RideRequestScreen() {
         initialFare: rideDetails.fare,
       });
     } catch (error: any) {
-      Alert.alert(
-        "Error",
-        error.response?.data?.message || "Failed to request ride.",
-      );
+      toast.show({
+        type: "error",
+        title: "Request failed",
+        message: error.response?.data?.message || "Failed to request ride.",
+      });
       setState("request");
       setIsLoading(false);
     }
@@ -234,7 +292,7 @@ export default function RideRequestScreen() {
             <View style={styles.dragIndicator} />
             {isFetchingEstimates ? (
               <ThemedView py={20} align="center" bg="transparent">
-                <ActivityIndicator color="#6C006C" />
+                <InlineLoader color="#6C006C" size={7} />
                 <ThemedText size="sm" style={{ marginTop: 8 }}>
                   Calculating fare...
                 </ThemedText>
@@ -299,11 +357,9 @@ export default function RideRequestScreen() {
         {state === "searching" && (
           <ThemedView px={24} py={30} bg="transparent">
             <ThemedView align="center" py={10} bg="transparent">
-              <ActivityIndicator
-                size="large"
-                color="#6C006C"
-                style={styles.loader}
-              />
+              <View style={styles.loader}>
+                <InlineLoader color="#6C006C" size={8} />
+              </View>
               <ThemedText size="xl" weight="bold" style={styles.statusText}>
                 {priceOffers.length > 0
                   ? "Review offers"

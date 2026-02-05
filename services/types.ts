@@ -5,6 +5,19 @@ export interface ApiResponse<T> {
   timestamp: string;
 }
 
+export interface SavedPlace {
+  id: string;
+  label: "HOME" | "WORK" | "OTHER";
+  address: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface UserRating {
+  average: number;
+  count: number;
+}
+
 export interface User {
   id: string;
   firstName: string;
@@ -13,6 +26,11 @@ export interface User {
   email: string;
   phoneNumber: string;
   gender: "MALE" | "FEMALE" | "OTHER";
+  profilePhotoUrl?: string;
+  rating?: UserRating;
+  totalTrips?: number;
+  cancelRate?: number;
+  savedPlaces?: SavedPlace[];
   createdAt: string;
 }
 

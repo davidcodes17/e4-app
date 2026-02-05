@@ -1,3 +1,5 @@
+import { InlineLoader } from "@/components/common/loaders";
+import { useToast } from "@/components/common/toast-provider";
 import { ThemedButton } from "@/components/themed-button";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -8,8 +10,6 @@ import * as Location from "expo-location";
 import { Href, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -24,6 +24,7 @@ type DriverState = "online" | "incoming" | "modify_price" | "accepted";
 
 export default function DriverHomeScreen() {
   const router = useRouter();
+  const toast = useToast();
   const [state, setState] = useState<DriverState>("online");
   const [newFare, setNewFare] = useState("5000");
   const [isLoading, setIsLoading] = useState(false);
@@ -44,7 +45,11 @@ export default function DriverHomeScreen() {
 
       SocketService.on("trip-status", (update) => {
         if (update.status === "CANCELLED") {
-          Alert.alert("Cancelled", "The passenger has cancelled the ride.");
+          toast.show({
+            type: "warning",
+            title: "Trip cancelled",
+            message: "The passenger has cancelled the ride.",
+          });
           setState("online");
           setCurrentTrip(null);
         }
@@ -101,10 +106,11 @@ export default function DriverHomeScreen() {
       await RideService.acceptOffer(currentTrip.id);
       setState("accepted");
     } catch (error: any) {
-      Alert.alert(
-        "Error",
-        error.response?.data?.message || "Failed to accept offer.",
-      );
+      toast.show({
+        type: "error",
+        title: "Accept failed",
+        message: error.response?.data?.message || "Failed to accept offer.",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -121,7 +127,11 @@ export default function DriverHomeScreen() {
 
   const handleStartTrip = () => {
     // Logic to start trip
-    alert("Trip Started!");
+    toast.show({
+      type: "success",
+      title: "Trip started",
+      message: "You can now head to the pickup location.",
+    });
   };
 
   const initialRegion = location
@@ -152,7 +162,7 @@ export default function DriverHomeScreen() {
 
         {!location && !errorMsg ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#6C006C" />
+            <InlineLoader color="#6C006C" size={8} />
             <ThemedText style={{ marginTop: 10 }}>
               Setting up driver radar...
             </ThemedText>
