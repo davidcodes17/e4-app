@@ -5,12 +5,24 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { DirectionsService } from "@/services/directions.service";
 import { RideService } from "@/services/ride.service";
-import SocketService from "@/services/socket.service";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE, Polyline } from "react-native-maps";
+
+/**
+ * RideRequestScreen - Passenger Screen for Searching Drivers
+ *
+ * IMPLEMENTATION: REST-based Polling (NO WebSockets)
+ * - Polls every 5 seconds for price offers from drivers
+ * - Polls every 5 seconds for trip status changes (REQUESTED → ACCEPTED → ARRIVED → ONGOING → COMPLETED)
+ * - Stops polling when driver accepts or trip completes
+ *
+ * API Endpoints Used:
+ * - GET /api/v1/trips/{tripId}/offers - Fetch driver price offers
+ * - GET /api/v1/trips/{tripId} - Fetch current trip status
+ */
 
 type ScreenState = "request" | "searching" | "found";
 
@@ -48,12 +60,18 @@ export default function RideRequestScreen() {
   const [rideDetails, setRideDetails] = useState<RideDetails | null>(null);
   const [driverInfo, setDriverInfo] = useState<DriverInfo | null>(null);
   const [priceOffers, setPriceOffers] = useState<any[]>([]);
+  const [currentTripId, setCurrentTripId] = useState<string | null>(null);
   const [driverLocation, setDriverLocation] = useState<{
     latitude: number;
     longitude: number;
   } | null>(null);
-  const [routeCoordinates, setRouteCoordinates] = useState<RouteCoordinate[]>([]);
+  const [routeCoordinates, setRouteCoordinates] = useState<RouteCoordinate[]>(
+    [],
+  );
   const [isLoadingRoute, setIsLoadingRoute] = useState(true);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
 
   // Coordinates logic
   const pickupCoords = pickupLat
@@ -65,7 +83,13 @@ export default function RideRequestScreen() {
 
   const destinationCoords = { latitude: 6.4253, longitude: 3.4041 }; // Mock destination for demo
 
-  // Fetch directions and route
+  // Map region centered on pickup location with good zoom level
+  const mapRegion = {
+    latitude: pickupCoords.latitude,
+    longitude: pickupCoords.longitude,
+    latitudeDelta: 0.05,
+    longitudeDelta: 0.05,
+  };
   useEffect(() => {
     const fetchDirections = async () => {
       try {
@@ -74,7 +98,7 @@ export default function RideRequestScreen() {
           pickupCoords.latitude,
           pickupCoords.longitude,
           destinationCoords.latitude,
-          destinationCoords.longitude
+          destinationCoords.longitude,
         );
 
         if (directions) {
@@ -83,7 +107,10 @@ export default function RideRequestScreen() {
           setRideDetails({
             distance: directions.distance,
             duration: DirectionsService.formatDuration(directions.duration),
-            fare: DirectionsService.calculateFare(directions.distance, directions.duration),
+            fare: DirectionsService.calculateFare(
+              directions.distance,
+              directions.duration,
+            ),
           });
         } else {
           // Fallback to simple polyline if directions fail
@@ -119,7 +146,11 @@ export default function RideRequestScreen() {
         const apiData = response?.data as any;
         const estimateData = apiData?.data || apiData;
 
-        if (estimateData && estimateData.distance !== undefined && !rideDetails) {
+        if (
+          estimateData &&
+          estimateData.distance !== undefined &&
+          !rideDetails
+        ) {
           setRideDetails({
             distance: estimateData.distance,
             duration: estimateData.duration.toString(),
@@ -142,71 +173,126 @@ export default function RideRequestScreen() {
   }, []);
 
   useEffect(() => {
-    const initSocket = async () => {
-      if (state === "searching") {
+    // ============= REST-BASED POLLING MECHANISM =============
+    // Continuously check for driver offers and trip status updates every 5 seconds
+    // This replaces WebSocket real-time updates with REST API calls
+
+    if (state === "searching" && currentTripId) {
+      console.log("🔄 Starting polling for trip:", currentTripId);
+
+      const pollForUpdates = async () => {
         try {
-          await SocketService.connect();
+          // 1. Fetch price offers from drivers
+          const offersResponse = await RideService.getTripOffers(currentTripId);
+          if (offersResponse.success && offersResponse.data) {
+            const offers = offersResponse.data;
 
-          // Listen for Price Bids
-          // Listen for Price Bids
-          SocketService.on("price-offer", (offer) => {
-            setPriceOffers((prev) => [
-              ...prev,
-              {
-                ...offer,
-                driverName: `${offer.driver?.firstName} ${offer.driver?.lastName}`,
-                price: offer.offeredPrice,
-              },
-            ]);
-          });
+            // Update offers list if new offers arrived
+            if (offers.length > priceOffers.length) {
+              console.log(`💰 New price offers: ${offers.length}`);
+              setPriceOffers(
+                offers.map((offer: any) => ({
+                  ...offer,
+                  driverName: `${offer.driver?.firstName} ${offer.driver?.lastName}`,
+                  price: offer.offeredPrice,
+                })),
+              );
+            }
+          }
 
-          // Listen for Ride Status Updates
-          SocketService.on("trip-status", (update) => {
-            if (update.status === "ACCEPTED") {
+          // 2. Fetch trip status to check if driver accepted
+          const statusResponse = await RideService.getTripStatus(currentTripId);
+          if (statusResponse.success && statusResponse.data) {
+            const trip = statusResponse.data;
+            console.log(`📊 Trip Status: ${trip.status}`);
+
+            // Handle different trip statuses
+            if (trip.status === "ACCEPTED" && state === "searching") {
+              console.log("✅ Driver accepted the trip");
               setDriverInfo({
-                name: `${update.driver?.firstName} ${update.driver?.lastName}`,
-                vehicle: update.driver?.vehicleModel || update.vehicleModel,
-                plate: update.driver?.plateNumber || update.plateNumber,
-                rating: update.driver?.rating || update.rating,
+                name: trip.driver?.fullName || "Driver",
+                vehicle: trip.driver?.carName,
+                plate: trip.driver?.licensePlate,
+                rating: trip.driver?.rating?.toString() || "N/A",
               });
               setState("found");
-            } else if (update.status === "ARRIVED") {
+              toast.show({
+                type: "success",
+                title: "Driver accepted!",
+                message: `${trip.driver?.fullName || "Your driver"} accepted your ride request.`,
+              });
+
+              // Stop polling when driver is found
+              if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+              }
+            } else if (trip.status === "ARRIVED") {
+              console.log("📍 Driver arrived at pickup location");
               toast.show({
                 type: "info",
                 title: "Driver arrived",
                 message: "Your driver is at the pickup location.",
               });
-            } else if (update.status === "CANCELLED") {
+            } else if (trip.status === "ONGOING") {
+              console.log("🚗 Trip is now in progress");
+              toast.show({
+                type: "info",
+                title: "Trip started",
+                message: "Your trip is now in progress.",
+              });
+            } else if (trip.status === "COMPLETED") {
+              console.log("✅ Trip completed");
+              toast.show({
+                type: "success",
+                title: "Trip completed",
+                message: "Thank you for riding with E4!",
+              });
+
+              // Stop polling
+              if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+              }
+            } else if (trip.status === "CANCELLED") {
+              console.log("❌ Trip cancelled");
               toast.show({
                 type: "warning",
                 title: "Trip cancelled",
                 message: "Your trip has been cancelled.",
               });
               setState("request");
+              setPriceOffers([]);
+
+              // Stop polling
+              if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+              }
             }
-          });
-
-          // Listen for Driver Location (if provided via trip-status or separate event)
-          SocketService.on("driver-location", (loc) => {
-            setDriverLocation({
-              latitude: loc.latitude,
-              longitude: loc.longitude,
-            });
-          });
+          }
         } catch (error) {
-          console.error("Socket connection failed:", error);
+          console.error("❌ Polling error:", error);
+          // Don't show error toast for every failed poll, just log it
         }
-      }
-    };
+      };
 
-    initSocket();
+      // Start polling every 5 seconds
+      pollingIntervalRef.current = setInterval(pollForUpdates, 5000);
 
-    return () => {
-      SocketService.off("price-offer");
-      SocketService.off("trip-status");
-      SocketService.off("driver-location");
-    };
-  }, [state]);
+      // Initial poll immediately
+      pollForUpdates();
+
+      // Cleanup: Stop polling when component unmounts or state changes
+      return () => {
+        if (pollingIntervalRef.current) {
+          console.log("🛑 Stopping polling");
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      };
+    }
+  }, [state, currentTripId]);
 
   const handleAcceptOffer = async (offer: any) => {
     setIsLoading(true);
@@ -228,7 +314,7 @@ export default function RideRequestScreen() {
     setIsLoading(true);
     setState("searching");
     try {
-      await RideService.requestRide({
+      const response = await RideService.requestRide({
         fromLocation: pickup || "Current Location",
         toLocation: destination || "Victoria Island, Lagos",
         pickupLatitude: pickupCoords.latitude,
@@ -239,6 +325,14 @@ export default function RideRequestScreen() {
         duration: rideDetails.duration,
         initialFare: rideDetails.fare,
       });
+
+      // Extract trip ID from response to use for polling
+      if (response.success && response.data) {
+        const tripId = response.data.id;
+        console.log("🚗 Ride requested successfully. Trip ID:", tripId);
+        setCurrentTripId(tripId);
+        setIsLoading(false);
+      }
     } catch (error: any) {
       toast.show({
         type: "error",
@@ -257,13 +351,7 @@ export default function RideRequestScreen() {
         <MapView
           style={styles.map}
           provider={PROVIDER_GOOGLE}
-          initialRegion={{
-            latitude: (pickupCoords.latitude + destinationCoords.latitude) / 2,
-            longitude:
-              (pickupCoords.longitude + destinationCoords.longitude) / 2,
-            latitudeDelta: 0.1,
-            longitudeDelta: 0.1,
-          }}
+          initialRegion={mapRegion}
         >
           <Marker coordinate={pickupCoords} title="Pickup" pinColor="#6C006C" />
           <Marker
@@ -278,11 +366,23 @@ export default function RideRequestScreen() {
               </View>
             </Marker>
           )}
-          <Polyline
-            coordinates={[pickupCoords, destinationCoords]}
-            strokeColor="#6C006C"
-            strokeWidth={4}
-          />
+          {/* Route polyline with real directions */}
+          {routeCoordinates.length > 0 && (
+            <Polyline
+              coordinates={routeCoordinates}
+              strokeColor="#6C006C"
+              strokeWidth={5}
+              lineDashPattern={[0]}
+            />
+          )}
+          {/* Fallback simple line if no route */}
+          {routeCoordinates.length === 0 && (
+            <Polyline
+              coordinates={[pickupCoords, destinationCoords]}
+              strokeColor="#6C006C"
+              strokeWidth={4}
+            />
+          )}
         </MapView>
       </View>
 

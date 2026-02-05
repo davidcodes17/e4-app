@@ -1,6 +1,6 @@
 import apiClient from "./api-client";
 import { TokenService } from "./token.service";
-import { ApiResponse, User } from "./types";
+import { ApiResponse, LoginData, NestedApiResponse, User } from "./types";
 
 export const AuthService = {
   async sendOtp(email: string): Promise<ApiResponse<void>> {
@@ -31,7 +31,7 @@ export const AuthService = {
   async login(
     emailAddress: string,
     password: string,
-  ): Promise<ApiResponse<{ token: string; role?: string }>> {
+  ): Promise<ApiResponse<NestedApiResponse<LoginData>>> {
     const response = await apiClient.post("/api/v1/auth/login", {
       emailAddress,
       password,
@@ -41,9 +41,15 @@ export const AuthService = {
     const token =
       response.data?.data?.accessToken ||
       response.data?.data?.data?.accessToken;
+    const role = response.data?.data?.role || response.data?.data?.data?.role;
 
     if (token) {
       await TokenService.saveToken(token);
+    }
+
+    // Save role for proper navigation and permissions
+    if (role) {
+      await TokenService.saveRole(role);
     }
 
     return response.data;
@@ -62,7 +68,7 @@ export const AuthService = {
         firstName: profileData.firstName,
         lastName: profileData.lastName,
         middleName: profileData.middleName,
-        emailAddress: profileData.emailAddress,
+        email: profileData.emailAddress,
         phoneNumber: profileData.phoneNumber,
         gender: profileData.gender,
         role: profileData.role,

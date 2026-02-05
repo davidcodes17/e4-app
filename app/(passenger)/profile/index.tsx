@@ -109,12 +109,6 @@ export default function ProfileScreen() {
 
           <View style={styles.statsRow}>
             <View style={styles.statCard}>
-              <ThemedText style={styles.statValue}>
-                {rating > 0 ? rating.toFixed(1) : "—"}
-              </ThemedText>
-              <ThemedText style={styles.statLabel}>Rating</ThemedText>
-            </View>
-            <View style={styles.statCard}>
               <ThemedText style={styles.statValue}>{tripCount}</ThemedText>
               <ThemedText style={styles.statLabel}>Trips</ThemedText>
             </View>
@@ -136,16 +130,6 @@ export default function ProfileScreen() {
                 <Ionicons name="time-outline" size={20} color="#6C006C" />
               </View>
               <ThemedText style={styles.menuText}>Trip history</ThemedText>
-              <Ionicons name="chevron-forward" size={18} color="#C4C4C4" />
-            </TouchableOpacity>
-
-            <View style={styles.menuDivider} />
-
-            <TouchableOpacity style={styles.menuItem}>
-              <View style={styles.menuIconContainer}>
-                <Ionicons name="card-outline" size={20} color="#6C006C" />
-              </View>
-              <ThemedText style={styles.menuText}>Payment methods</ThemedText>
               <Ionicons name="chevron-forward" size={18} color="#C4C4C4" />
             </TouchableOpacity>
 
@@ -209,27 +193,6 @@ export default function ProfileScreen() {
                   )}
                 </View>
               ))}
-            </View>
-          </View>
-        )}
-
-        {user?.cancelRate !== undefined && (
-          <View style={styles.statsSection}>
-            <ThemedText style={styles.sectionTitle}>Reliability</ThemedText>
-            <View style={styles.reliabilityCard}>
-              <View style={styles.reliabilityItem}>
-                <View style={styles.reliabilityIcon}>
-                  <Ionicons name="checkmark-circle" size={20} color="#1F9D55" />
-                </View>
-                <View>
-                  <ThemedText style={styles.reliabilityValue}>
-                    {cancelRatePercent}%
-                  </ThemedText>
-                  <ThemedText style={styles.reliabilityLabel}>
-                    Cancel rate
-                  </ThemedText>
-                </View>
-              </View>
             </View>
           </View>
         )}

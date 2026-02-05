@@ -39,16 +39,22 @@ export default function PassengerLoginScreen() {
       const response = await AuthService.login(form.email, form.password);
 
       if (response.success) {
-        // Since the login response from the new docs only specifies 'token',
-        // we might need to fetch the profile to get the role if not provided.
-        // However, for now, let's assume successful login goes to passenger home
-        // unless we have logic to distinguish.
+        // Backend returns: response.data.data.role ("USER" or "DRIVER")
+        const role = response.data?.data?.role;
+
         toast.show({
           type: "success",
           title: "Welcome back",
           message: "Login successful",
         });
-        router.replace("/(passenger)/home");
+
+        // Navigate based on role
+        if (role === "DRIVER") {
+          router.replace("/(driver)/home");
+        } else {
+          // role === "USER" or undefined → passenger home
+          router.replace("/(passenger)/home");
+        }
       } else {
         toast.show({
           type: "error",

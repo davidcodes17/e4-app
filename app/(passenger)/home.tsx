@@ -1,3 +1,4 @@
+import { InlineLoader } from "@/components/common/loaders";
 import LocationSuggestions, {
     LocationSuggestion,
 } from "@/components/location-suggestions";
@@ -16,7 +17,7 @@ import {
     StyleSheet,
     TextInput,
     TouchableOpacity,
-    View
+    View,
 } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
@@ -105,6 +106,10 @@ export default function PassengerHomeScreen() {
   const [destinationSuggestions, setDestinationSuggestions] = useState<
     LocationSuggestion[]
   >([]);
+  const [isLoadingPickupSuggestions, setIsLoadingPickupSuggestions] =
+    useState(false);
+  const [isLoadingDestinationSuggestions, setIsLoadingDestinationSuggestions] =
+    useState(false);
 
   // Mock data for saved and recent locations
   const savedLocations: LocationSuggestion[] = [
@@ -158,6 +163,7 @@ export default function PassengerHomeScreen() {
   const handlePickupChange = async (text: string) => {
     setPickup(text);
     if (text.length >= 2) {
+      setIsLoadingPickupSuggestions(true);
       try {
         // Get Nominatim suggestions (free, no API key)
         const predictions = await OpenStreetMapService.getPlacePredictions(
@@ -198,6 +204,8 @@ export default function PassengerHomeScreen() {
         );
         setPickupSuggestions(filtered);
         setShowPickupSuggestions(true);
+      } finally {
+        setIsLoadingPickupSuggestions(false);
       }
     } else {
       setShowPickupSuggestions(false);
@@ -208,6 +216,7 @@ export default function PassengerHomeScreen() {
   const handleDestinationChange = async (text: string) => {
     setDestination(text);
     if (text.length >= 2) {
+      setIsLoadingDestinationSuggestions(true);
       try {
         // Get Nominatim suggestions (free, no API key)
         const predictions = await OpenStreetMapService.getPlacePredictions(
@@ -257,6 +266,8 @@ export default function PassengerHomeScreen() {
         );
         setDestinationSuggestions(filtered);
         setShowDestinationSuggestions(true);
+      } finally {
+        setIsLoadingDestinationSuggestions(false);
       }
     } else {
       setShowDestinationSuggestions(false);
@@ -460,22 +471,48 @@ export default function PassengerHomeScreen() {
               {/* Pickup Location Suggestions */}
               {showPickupSuggestions && (
                 <View style={styles.suggestionsOverlay}>
-                  <LocationSuggestions
-                    suggestions={pickupSuggestions}
-                    onSelectLocation={handleSelectPickupLocation}
-                    visible={showPickupSuggestions}
-                  />
+                  {isLoadingPickupSuggestions ? (
+                    <View style={styles.loadingContainer}>
+                      <InlineLoader color="#6C006C" size={5} />
+                      <ThemedText
+                        size="sm"
+                        color="#999"
+                        style={styles.loadingText}
+                      >
+                        Searching locations...
+                      </ThemedText>
+                    </View>
+                  ) : (
+                    <LocationSuggestions
+                      suggestions={pickupSuggestions}
+                      onSelectLocation={handleSelectPickupLocation}
+                      visible={showPickupSuggestions}
+                    />
+                  )}
                 </View>
               )}
 
               {/* Destination Location Suggestions */}
               {showDestinationSuggestions && (
                 <View style={styles.suggestionsOverlay}>
-                  <LocationSuggestions
-                    suggestions={destinationSuggestions}
-                    onSelectLocation={handleSelectDestinationLocation}
-                    visible={showDestinationSuggestions}
-                  />
+                  {isLoadingDestinationSuggestions ? (
+                    <View style={styles.loadingContainer}>
+                      <InlineLoader color="#6C006C" size={5} />
+                      <ThemedText
+                        size="sm"
+                        color="#999"
+                        style={styles.loadingText}
+                      >
+                        Searching locations...
+                      </ThemedText>
+                    </View>
+                  ) : (
+                    <LocationSuggestions
+                      suggestions={destinationSuggestions}
+                      onSelectLocation={handleSelectDestinationLocation}
+                      visible={showDestinationSuggestions}
+                    />
+                  )}
                 </View>
               )}
             </View>
@@ -610,6 +647,22 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 999,
     backgroundColor: "transparent",
+  },
+  loadingContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginHorizontal: 0,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    minHeight: 100,
   },
   inputRow: {
     flexDirection: "row",

@@ -37,22 +37,30 @@ export default function DriverLoginScreen() {
     setIsLoading(true);
     try {
       const response = await DriverService.login(form.email, form.password);
-      const role = response.data?.role;
 
-      if (role === "DRIVER") {
+      if (response.success) {
+        // Backend returns: response.data.data.role ("USER" or "DRIVER")
+        const role = response.data?.data?.role;
+
         toast.show({
           type: "success",
           title: "Welcome back",
           message: "Login successful",
         });
-        router.replace("/(driver)/home");
+
+        // Navigate based on role
+        if (role === "DRIVER") {
+          router.replace("/(driver)/home");
+        } else {
+          // role === "USER" → passenger home
+          router.replace("/(passenger)/home");
+        }
       } else {
         toast.show({
-          type: "success",
-          title: "Welcome back",
-          message: "Login successful",
+          type: "error",
+          title: "Login failed",
+          message: response.message || "Login failed.",
         });
-        router.replace("/(passenger)/home");
       }
     } catch (error: any) {
       toast.show({

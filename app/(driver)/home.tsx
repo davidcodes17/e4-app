@@ -4,11 +4,10 @@ import { ThemedButton } from "@/components/themed-button";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { RideService } from "@/services/ride.service";
-import SocketService from "@/services/socket.service";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Location from "expo-location";
 import { Href, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
     KeyboardAvoidingView,
     Modal,
@@ -19,6 +18,21 @@ import {
     View,
 } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+
+/**
+ * DriverHomeScreen - Driver waiting for and accepting ride requests
+ *
+ * IMPLEMENTATION: REST-based Polling (NO WebSockets)
+ * - Polls every 5 seconds for new ride requests
+ * - Polls every 5 seconds for trip status updates
+ * - Sends location updates every 3 seconds via REST during active trip
+ *
+ * API Endpoints Used:
+ * - GET /api/v1/rides/available - Fetch available ride requests
+ * - GET /api/v1/trips/{tripId} - Fetch current trip status
+ * - POST /api/v1/rides/propose-price - Send price offer to passenger
+ * - POST /api/v1/rides/update-location - Update driver location
+ */
 
 type DriverState = "online" | "incoming" | "modify_price" | "accepted";
 
@@ -33,58 +47,181 @@ export default function DriverHomeScreen() {
     null,
   );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
 
   useEffect(() => {
-    const initSocket = async () => {
-      await SocketService.connect();
+    // ============= REST-BASED POLLING FOR RIDE REQUESTS =============
+    // Continuously check for new ride requests every 5 seconds
+    // This replaces WebSocket real-time updates with REST API calls
 
-      SocketService.on("ride-request", (trip) => {
-        setCurrentTrip(trip);
-        setState("incoming");
-      });
+    if (state === "online") {
+      console.log("🔄 Starting polling for ride requests");
 
-      SocketService.on("trip-status", (update) => {
-        if (update.status === "CANCELLED") {
-          toast.show({
-            type: "warning",
-            title: "Trip cancelled",
-            message: "The passenger has cancelled the ride.",
-          });
-          setState("online");
-          setCurrentTrip(null);
-        }
-        // Also handle cases where trip is taken or accepted by others if logic allows
-      });
-    };
-
-    initSocket();
-
-    return () => {
-      SocketService.off("ride-request");
-      SocketService.off("trip-status");
-    };
-  }, [currentTrip]);
-
-  useEffect(() => {
-    let locationInterval: any;
-
-    if (state === "accepted" || (state === "online" && !currentTrip)) {
-      locationInterval = setInterval(async () => {
+      const pollForRides = async () => {
         try {
-          const freshLocation = await Location.getCurrentPositionAsync({});
-          SocketService.emit("update-location", {
-            latitude: freshLocation.coords.latitude,
-            longitude: freshLocation.coords.longitude,
-            tripId: currentTrip?.id,
-          });
-        } catch (e) {
-          console.error("Failed to update location via socket", e);
+          // Fetch available ride requests from backend
+          const response = await RideService.getAvailableRides();
+          if (response.success && response.data && response.data.length > 0) {
+            const newTrip = response.data[0]; // Get first available ride
+
+            // Only show if it's a new trip (different from current)
+            if (!currentTrip || currentTrip.id !== newTrip.id) {
+              console.log("📍 New Ride Request:", newTrip);
+              setCurrentTrip(newTrip);
+              setState("incoming");
+              toast.show({
+                type: "info",
+                title: "New Ride!",
+                message: `From ${newTrip.fromLocation} to ${newTrip.toLocation}`,
+              });
+            }
+          }
+        } catch (error) {
+          console.error("❌ Polling error:", error);
+          // Don't show error toast for every failed poll
         }
-      }, 10000);
+      };
+
+      // Start polling every 5 seconds
+      pollingIntervalRef.current = setInterval(pollForRides, 5000);
+
+      // Initial poll immediately
+      pollForRides();
+
+      // Cleanup: Stop polling when state changes
+      return () => {
+        if (pollingIntervalRef.current) {
+          console.log("🛑 Stopping ride request polling");
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      };
     }
 
-    return () => clearInterval(locationInterval);
-  }, [state, currentTrip]);
+    // ============= POLL FOR TRIP STATUS UPDATES =============
+    if ((state === "incoming" || state === "accepted") && currentTrip?.id) {
+      console.log("🔄 Starting trip status polling");
+
+      const pollTripStatus = async () => {
+        try {
+          const response = await RideService.getTripStatus(currentTrip.id);
+          if (response.success && response.data) {
+            const trip = response.data;
+            console.log(`📊 Trip Status: ${trip.status}`);
+
+            if (trip.status === "CANCELLED") {
+              console.log("❌ Trip cancelled by passenger");
+              toast.show({
+                type: "warning",
+                title: "Trip cancelled",
+                message: "The passenger has cancelled the ride.",
+              });
+              setState("online");
+              setCurrentTrip(null);
+
+              // Stop polling
+              if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+              }
+            } else if (trip.status === "COMPLETED") {
+              console.log("✅ Trip completed");
+              toast.show({
+                type: "success",
+                title: "Trip completed",
+                message: "Passenger dropped off successfully.",
+              });
+              setState("online");
+              setCurrentTrip(null);
+
+              // Stop polling
+              if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+              }
+            } else if (
+              trip.status === "ACCEPTED" &&
+              trip.driverId !== currentTrip.driverId
+            ) {
+              // Trip was taken by another driver
+              console.log(`⛔ Trip taken by another driver`);
+              toast.show({
+                type: "info",
+                title: "Trip taken",
+                message: "Another driver accepted this trip.",
+              });
+              setState("online");
+              setCurrentTrip(null);
+
+              // Stop polling
+              if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+              }
+            }
+          }
+        } catch (error) {
+          console.error("❌ Trip status polling error:", error);
+        }
+      };
+
+      // Poll trip status every 5 seconds
+      pollingIntervalRef.current = setInterval(pollTripStatus, 5000);
+      pollTripStatus();
+
+      return () => {
+        if (pollingIntervalRef.current) {
+          console.log("🛑 Stopping trip status polling");
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      };
+    }
+  }, [state, currentTrip?.id]);
+
+  useEffect(() => {
+    // ============= LOCATION TRACKING VIA REST FOR ACTIVE TRIP =============
+    // Driver sends location updates every 3 seconds during accepted trip via REST API
+    if (state === "accepted" && currentTrip?.id) {
+      const updateLocation = async () => {
+        try {
+          const freshLocation = await Location.getCurrentPositionAsync({});
+
+          // Send location update via REST API
+          await RideService.updateDriverLocation({
+            tripId: currentTrip.id,
+            latitude: freshLocation.coords.latitude,
+            longitude: freshLocation.coords.longitude,
+          });
+
+          console.log(
+            `📍 Location sent: ${freshLocation.coords.latitude}, ${freshLocation.coords.longitude}`,
+          );
+        } catch (error) {
+          console.error("❌ Failed to update location via REST:", error);
+        }
+      };
+
+      // Start location updates every 3 seconds
+      locationIntervalRef.current = setInterval(updateLocation, 3000);
+
+      // Send location immediately
+      updateLocation();
+
+      return () => {
+        if (locationIntervalRef.current) {
+          console.log("🛑 Stopping location updates");
+          clearInterval(locationIntervalRef.current);
+          locationIntervalRef.current = null;
+        }
+      };
+    }
+  }, [state, currentTrip?.id]);
 
   useEffect(() => {
     (async () => {
@@ -116,13 +253,48 @@ export default function DriverHomeScreen() {
     }
   };
 
-  const handleProposePrice = (offeredPrice: number) => {
+  const handleProposePrice = async (offeredPrice: number) => {
     if (!currentTrip) return;
-    SocketService.emit("propose-price", {
-      tripId: currentTrip.id,
-      offeredPrice,
-    });
-    setState("online");
+    console.log(
+      `💰 Proposing price ₦${offeredPrice} for trip ${currentTrip.id}`,
+    );
+
+    setIsLoading(true);
+    try {
+      // ============= SEND PRICE OFFER VIA REST API =============
+      // Server will send this offer to the passenger
+      const response = await RideService.proposePrice(
+        currentTrip.id,
+        offeredPrice,
+      );
+
+      if (response.success) {
+        console.log("✅ Price offer sent successfully");
+        toast.show({
+          type: "success",
+          title: "Offer sent",
+          message: `Offered ₦${offeredPrice.toLocaleString()} to rider`,
+        });
+        setState("online");
+        setCurrentTrip(null);
+      } else {
+        console.error("❌ Failed to send price offer");
+        toast.show({
+          type: "error",
+          title: "Offer failed",
+          message: response.message || "Could not send offer. Try again.",
+        });
+      }
+    } catch (error: any) {
+      console.error("❌ Price offer error:", error);
+      toast.show({
+        type: "error",
+        title: "Offer failed",
+        message: error.response?.data?.message || "Could not send offer.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleStartTrip = () => {

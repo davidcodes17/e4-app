@@ -80,7 +80,7 @@ export default function TripHistoryScreen() {
 
       <View style={styles.tripFooter}>
         <ThemedText style={styles.priceText}>
-          ₦{item.initialFare.toLocaleString()}
+          ₦{(item.initialFare ?? item.price ?? 0).toLocaleString()}
         </ThemedText>
         <Ionicons name="chevron-forward" size={20} color="#CCC" />
       </View>

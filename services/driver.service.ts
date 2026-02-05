@@ -1,6 +1,6 @@
 import apiClient from "./api-client";
 import { TokenService } from "./token.service";
-import { ApiResponse, Driver } from "./types";
+import { ApiResponse, Driver, LoginData, NestedApiResponse } from "./types";
 
 export const DriverService = {
   async createAccount(data: any): Promise<ApiResponse<Driver>> {
@@ -14,7 +14,7 @@ export const DriverService = {
   async login(
     emailAddress: string,
     password: string,
-  ): Promise<ApiResponse<{ token: string; role?: string }>> {
+  ): Promise<ApiResponse<NestedApiResponse<LoginData>>> {
     const response = await apiClient.post("/api/v1/auth/login", {
       emailAddress,
       password,
@@ -23,8 +23,16 @@ export const DriverService = {
     const token =
       response.data?.data?.accessToken ||
       response.data?.data?.data?.accessToken;
+    const role =
+      response.data?.data?.role || response.data?.data?.data?.role || "DRIVER"; // Default to DRIVER since this is driver login
+
     if (token) {
       await TokenService.saveToken(token);
+    }
+
+    // Save role for proper navigation and permissions
+    if (role) {
+      await TokenService.saveRole(role);
     }
 
     return response.data;
