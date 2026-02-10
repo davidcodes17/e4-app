@@ -12,6 +12,7 @@ export default ({ config }) => {
     ios: {
       ...appJson.expo.ios,
       ...config.ios,
+      bundleIdentifier: "com.david-codes.e4",
     },
   };
 };
