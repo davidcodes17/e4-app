@@ -5,11 +5,14 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { DirectionsService } from "@/services/directions.service";
 import { RideService } from "@/services/ride.service";
+import { PriceOffer, TripPhase } from "@/services/types";
+import { calculateDistance, hasDeviatedFromRoute } from "@/utils/distance";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
-import MapView, { Marker, PROVIDER_GOOGLE, Polyline } from "react-native-maps";
+import MapView, { Marker, Polyline, UrlTile } from "react-native-maps";
 
 /**
  * RideRequestScreen - Passenger Screen for Searching Drivers
@@ -44,6 +47,40 @@ interface RouteCoordinate {
   longitude: number;
 }
 
+interface DemoCar {
+  id: string;
+  latitude: number;
+  longitude: number;
+  rotation: number;
+}
+
+/**
+ * Generate demo car locations around a central point
+ * Creates realistic car positions for better UX
+ */
+function generateDemoCars(
+  centerLat: number,
+  centerLng: number,
+  count: number = 5,
+): DemoCar[] {
+  const cars: DemoCar[] = [];
+  const radius = 0.01; // ~1km radius in degrees
+
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2;
+    const distance = radius * (0.5 + Math.random() * 0.5);
+
+    cars.push({
+      id: `demo-car-${i}`,
+      latitude: centerLat + distance * Math.cos(angle),
+      longitude: centerLng + distance * Math.sin(angle),
+      rotation: angle * (180 / Math.PI),
+    });
+  }
+
+  return cars;
+}
+
 export default function RideRequestScreen() {
   const router = useRouter();
   const toast = useToast();
@@ -55,16 +92,31 @@ export default function RideRequestScreen() {
   }>();
 
   const [state, setState] = useState<ScreenState>("request");
+  const [tripPhase, setTripPhase] = useState<TripPhase>(TripPhase.IDLE);
   const [isLoading, setIsLoading] = useState(false);
   const [isFetchingEstimates, setIsFetchingEstimates] = useState(true);
   const [rideDetails, setRideDetails] = useState<RideDetails | null>(null);
   const [driverInfo, setDriverInfo] = useState<DriverInfo | null>(null);
-  const [priceOffers, setPriceOffers] = useState<any[]>([]);
+  const [priceOffers, setPriceOffers] = useState<PriceOffer[]>([]);
   const [currentTripId, setCurrentTripId] = useState<string | null>(null);
+  const [distanceToPickup, setDistanceToPickup] = useState<number | null>(null);
+  const PICKUP_DETECTION_RADIUS = 50; // 50 meters
+  const [destinationCoords, setDestinationCoords] = useState<{
+    latitude: number;
+    longitude: number;
+  }>(() => ({
+    latitude: 6.4253,
+    longitude: 3.4041,
+  }));
   const [driverLocation, setDriverLocation] = useState<{
     latitude: number;
     longitude: number;
   } | null>(null);
+  const [driverRouteCoordinates, setDriverRouteCoordinates] = useState<
+    RouteCoordinate[]
+  >([]);
+  const [driverEta, setDriverEta] = useState<string | null>(null);
+  const [demoCars, setDemoCars] = useState<DemoCar[]>([]);
   const [routeCoordinates, setRouteCoordinates] = useState<RouteCoordinate[]>(
     [],
   );
@@ -72,6 +124,15 @@ export default function RideRequestScreen() {
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
+  const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const [passengerLocation, setPassengerLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [mainTripRoute, setMainTripRoute] = useState<RouteCoordinate[]>([]);
+  const [mainTripEta, setMainTripEta] = useState<string | null>(null);
 
   // Coordinates logic
   const pickupCoords = pickupLat
@@ -81,8 +142,6 @@ export default function RideRequestScreen() {
       }
     : { latitude: 6.4311, longitude: 3.4697 }; // Fallback
 
-  const destinationCoords = { latitude: 6.4253, longitude: 3.4041 }; // Mock destination for demo
-
   // Map region centered on pickup location with good zoom level
   const mapRegion = {
     latitude: pickupCoords.latitude,
@@ -90,6 +149,217 @@ export default function RideRequestScreen() {
     latitudeDelta: 0.05,
     longitudeDelta: 0.05,
   };
+
+  // Generate demo cars on mount
+  useEffect(() => {
+    const cars = generateDemoCars(
+      pickupCoords.latitude,
+      pickupCoords.longitude,
+      5,
+    );
+    setDemoCars(cars);
+  }, [pickupCoords.latitude, pickupCoords.longitude]);
+
+  // ============= PASSENGER LOCATION TRACKING =============
+  // Send passenger location updates every 3 seconds after trip is accepted
+  useEffect(() => {
+    if ((state === "found" || state === "searching") && currentTripId) {
+      const updateLocation = async () => {
+        try {
+          // Request location permissions
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          if (status !== "granted") {
+            console.warn("⚠️ Location permission not granted:", status);
+            toast.show({
+              type: "error",
+              title: "Location Permission Required",
+              message: "Please enable location access to continue.",
+            });
+            return;
+          }
+
+          // Get current location with high accuracy
+          const currentLocation = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+          const coords = {
+            latitude: currentLocation.coords.latitude,
+            longitude: currentLocation.coords.longitude,
+          };
+
+          setPassengerLocation(coords);
+
+          // Send location update to backend
+          await RideService.updatePassengerLocation({
+            tripId: currentTripId,
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+          });
+
+          console.log(
+            `📍 Passenger location sent: ${coords.latitude}, ${coords.longitude}`,
+          );
+        } catch (error) {
+          console.error("❌ Failed to update passenger location:", error);
+        }
+      };
+
+      // Start location updates every 3 seconds
+      locationIntervalRef.current = setInterval(updateLocation, 3000);
+
+      // Send location immediately
+      updateLocation();
+
+      return () => {
+        if (locationIntervalRef.current) {
+          console.log("🛑 Stopping passenger location updates");
+          clearInterval(locationIntervalRef.current);
+          locationIntervalRef.current = null;
+        }
+      };
+    }
+  }, [state, currentTripId]);
+
+  // ============= DRIVER TO PICKUP ROUTE CALCULATION =============
+  // Calculate route from driver location to pickup when driver location updates
+  useEffect(() => {
+    const calculateDriverRoute = async () => {
+      if (
+        driverLocation &&
+        (tripPhase === TripPhase.EN_ROUTE_TO_PICKUP ||
+          tripPhase === TripPhase.DRIVER_ASSIGNED)
+      ) {
+        try {
+          console.log("🗺️ Calculating route from driver to pickup...");
+          const directions = await DirectionsService.getDirections(
+            driverLocation.latitude,
+            driverLocation.longitude,
+            pickupCoords.latitude,
+            pickupCoords.longitude,
+          );
+
+          if (directions) {
+            setDriverRouteCoordinates(directions.coordinates);
+            setDriverEta(DirectionsService.formatDuration(directions.duration));
+            console.log(
+              `✅ Driver route calculated. ETA: ${DirectionsService.formatDuration(directions.duration)}`,
+            );
+          }
+        } catch (error) {
+          console.error("❌ Failed to calculate driver route:", error);
+        }
+      }
+    };
+
+    calculateDriverRoute();
+  }, [
+    driverLocation,
+    tripPhase,
+    pickupCoords.latitude,
+    pickupCoords.longitude,
+  ]);
+
+  // ============= PICKUP DETECTION & ROUTE TRANSITION =============
+  // Detect when driver is within 50m of pickup and transition to main trip
+  useEffect(() => {
+    if (
+      tripPhase === TripPhase.EN_ROUTE_TO_PICKUP &&
+      driverLocation &&
+      pickupCoords
+    ) {
+      const distance = calculateDistance(
+        driverLocation.latitude,
+        driverLocation.longitude,
+        pickupCoords.latitude,
+        pickupCoords.longitude,
+      );
+
+      setDistanceToPickup(distance);
+
+      // Check if driver is within pickup detection radius
+      if (distance <= PICKUP_DETECTION_RADIUS) {
+        console.log("✅ PICKED UP! Driver is within 50m of pickup location");
+        setTripPhase(TripPhase.PICKED_UP);
+
+        toast.show({
+          type: "success",
+          title: "Picked up!",
+          message: "Your driver has arrived. Trip started!",
+        });
+
+        // Transition to main trip route after a brief delay
+        setTimeout(() => {
+          setTripPhase(TripPhase.ON_TRIP);
+          console.log("🚗 Transitioning to ON_TRIP phase");
+        }, 1500);
+      }
+    }
+  }, [driverLocation, tripPhase, pickupCoords, PICKUP_DETECTION_RADIUS]);
+
+  // ============= MAIN TRIP ROUTE CALCULATION =============
+  // Calculate route from driver's current location to destination during ON_TRIP
+  useEffect(() => {
+    if (tripPhase === TripPhase.ON_TRIP && destinationCoords) {
+      const calculateMainTripRoute = async () => {
+        try {
+          console.log("🗺️ Calculating main trip route to destination...");
+          const startLatitude =
+            driverLocation?.latitude ?? pickupCoords.latitude;
+          const startLongitude =
+            driverLocation?.longitude ?? pickupCoords.longitude;
+          const directions = await DirectionsService.getDirections(
+            startLatitude,
+            startLongitude,
+            destinationCoords.latitude,
+            destinationCoords.longitude,
+          );
+
+          if (directions) {
+            setMainTripRoute(directions.coordinates);
+            setMainTripEta(
+              DirectionsService.formatDuration(directions.duration),
+            );
+            console.log(
+              `✅ Main trip route calculated. ETA: ${DirectionsService.formatDuration(directions.duration)}`,
+            );
+          }
+        } catch (error) {
+          console.error("❌ Failed to calculate main trip route:", error);
+        }
+      };
+
+      calculateMainTripRoute();
+    }
+  }, [
+    tripPhase,
+    destinationCoords,
+    pickupCoords.latitude,
+    pickupCoords.longitude,
+    driverLocation,
+  ]);
+
+  // ============= ROUTE DEVIATION DETECTION =============
+  // Recalculate route if driver deviates significantly during pre-pickup
+  useEffect(() => {
+    if (
+      tripPhase === TripPhase.EN_ROUTE_TO_PICKUP &&
+      driverLocation &&
+      driverRouteCoordinates.length > 0
+    ) {
+      const deviated = hasDeviatedFromRoute(
+        driverLocation.latitude,
+        driverLocation.longitude,
+        driverRouteCoordinates,
+        100, // 100m deviation threshold
+      );
+
+      if (deviated) {
+        console.log("⚠️ Driver deviated from route. Recalculating...");
+        // The route calculation effect will be triggered again via dependencies
+      }
+    }
+  }, [driverLocation, driverRouteCoordinates, tripPhase]);
+
   useEffect(() => {
     const fetchDirections = async () => {
       try {
@@ -177,7 +447,7 @@ export default function RideRequestScreen() {
     // Continuously check for driver offers and trip status updates every 5 seconds
     // This replaces WebSocket real-time updates with REST API calls
 
-    if (state === "searching" && currentTripId) {
+    if ((state === "searching" || state === "found") && currentTripId) {
       console.log("🔄 Starting polling for trip:", currentTripId);
 
       const pollForUpdates = async () => {
@@ -190,13 +460,7 @@ export default function RideRequestScreen() {
             // Update offers list if new offers arrived
             if (offers.length > priceOffers.length) {
               console.log(`💰 New price offers: ${offers.length}`);
-              setPriceOffers(
-                offers.map((offer: any) => ({
-                  ...offer,
-                  driverName: `${offer.driver?.firstName} ${offer.driver?.lastName}`,
-                  price: offer.offeredPrice,
-                })),
-              );
+              setPriceOffers(offers);
             }
           }
 
@@ -206,29 +470,74 @@ export default function RideRequestScreen() {
             const trip = statusResponse.data;
             console.log(`📊 Trip Status: ${trip.status}`);
 
-            // Handle different trip statuses
-            if (trip.status === "ACCEPTED" && state === "searching") {
-              console.log("✅ Driver accepted the trip");
-              setDriverInfo({
-                name: trip.driver?.fullName || "Driver",
-                vehicle: trip.driver?.carName,
-                plate: trip.driver?.licensePlate,
-                rating: trip.driver?.rating?.toString() || "N/A",
-              });
-              setState("found");
-              toast.show({
-                type: "success",
-                title: "Driver accepted!",
-                message: `${trip.driver?.fullName || "Your driver"} accepted your ride request.`,
-              });
+            // Update driver location if available in trip response
+            const driverLat =
+              trip.driverLatitude ??
+              trip.driver?.latitude ??
+              trip.driver?.currentLatitude ??
+              trip.driver?.location?.latitude;
+            const driverLng =
+              trip.driverLongitude ??
+              trip.driver?.longitude ??
+              trip.driver?.currentLongitude ??
+              trip.driver?.location?.longitude;
 
-              // Stop polling when driver is found
-              if (pollingIntervalRef.current) {
-                clearInterval(pollingIntervalRef.current);
-                pollingIntervalRef.current = null;
+            if (
+              typeof driverLat === "number" &&
+              typeof driverLng === "number"
+            ) {
+              setDriverLocation({ latitude: driverLat, longitude: driverLng });
+            }
+
+            if (
+              typeof trip.dropOffLatitude === "number" &&
+              typeof trip.dropOffLongitude === "number"
+            ) {
+              setDestinationCoords({
+                latitude: trip.dropOffLatitude,
+                longitude: trip.dropOffLongitude,
+              });
+            }
+
+            // Handle different trip statuses
+            if (trip.status === "ACCEPTED") {
+              if (state === "searching") {
+                console.log("✅ Driver accepted the trip");
+                const driverName =
+                  trip.driver?.fullName ||
+                  (trip.driver?.firstName && trip.driver?.lastName
+                    ? `${trip.driver.firstName} ${trip.driver.lastName}`
+                    : "Driver");
+                setDriverInfo({
+                  name: driverName,
+                  vehicle: trip.driver?.carName,
+                  plate: trip.driver?.licensePlate || trip.driver?.plateNumber,
+                  rating: trip.driver?.rating?.toString() || "N/A",
+                });
+                setState("found");
+                setTripPhase(TripPhase.DRIVER_ASSIGNED);
+
+                // Schedule transition to EN_ROUTE_TO_PICKUP after 1 second
+                setTimeout(() => {
+                  setTripPhase(TripPhase.EN_ROUTE_TO_PICKUP);
+                  console.log("🚗 Transitioned to EN_ROUTE_TO_PICKUP phase");
+                }, 1000);
+
+                toast.show({
+                  type: "success",
+                  title: "Driver accepted!",
+                  message: `${driverName} accepted your ride request.`,
+                });
+
+                // KEEP POLLING to track driver location updates
+                // Don't stop polling - we need to track driver location
+                console.log("🔄 Continuing polling to track driver location");
+              } else if (tripPhase !== TripPhase.EN_ROUTE_TO_PICKUP) {
+                setTripPhase(TripPhase.EN_ROUTE_TO_PICKUP);
               }
             } else if (trip.status === "ARRIVED") {
               console.log("📍 Driver arrived at pickup location");
+              setTripPhase(TripPhase.PICKED_UP);
               toast.show({
                 type: "info",
                 title: "Driver arrived",
@@ -236,6 +545,7 @@ export default function RideRequestScreen() {
               });
             } else if (trip.status === "ONGOING") {
               console.log("🚗 Trip is now in progress");
+              setTripPhase(TripPhase.ON_TRIP);
               toast.show({
                 type: "info",
                 title: "Trip started",
@@ -243,6 +553,7 @@ export default function RideRequestScreen() {
               });
             } else if (trip.status === "COMPLETED") {
               console.log("✅ Trip completed");
+              setTripPhase(TripPhase.COMPLETED);
               toast.show({
                 type: "success",
                 title: "Trip completed",
@@ -297,13 +608,30 @@ export default function RideRequestScreen() {
   const handleAcceptOffer = async (offer: any) => {
     setIsLoading(true);
     try {
-      await RideService.acceptOffer(offer.id);
-      // Redirection logic usually handled by ride-status subscription
+      const response: any = await RideService.acceptOffer(offer.id);
+      console.log("✅ Offer accepted:", response);
+
+      // Clear the offers list since one has been accepted
+      setPriceOffers([]);
+
+      // Show confirmation toast
+      toast.show({
+        type: "success",
+        title: "Offer Accepted",
+        message: "Waiting for driver to confirm...",
+      });
+
+      // The polling will handle the status update from "REQUESTED" to "ACCEPTED"
+      // So we just need to reset loading state
+      setIsLoading(false);
     } catch (error: any) {
+      console.error("❌ Failed to accept offer:", error);
       toast.show({
         type: "error",
         title: "Offer failed",
-        message: "Failed to accept offer. It may have expired.",
+        message:
+          error.response?.data?.message ||
+          "Failed to accept offer. It may have expired.",
       });
       setIsLoading(false);
     }
@@ -314,7 +642,7 @@ export default function RideRequestScreen() {
     setIsLoading(true);
     setState("searching");
     try {
-      const response = await RideService.requestRide({
+      const response: any = await RideService.requestRide({
         fromLocation: pickup || "Current Location",
         toLocation: destination || "Victoria Island, Lagos",
         pickupLatitude: pickupCoords.latitude,
@@ -327,8 +655,9 @@ export default function RideRequestScreen() {
       });
 
       // Extract trip ID from response to use for polling
+      console.log(response, "SHSH");
       if (response.success && response.data) {
-        const tripId = response.data.id;
+        const tripId = response?.data?.data?.id;
         console.log("🚗 Ride requested successfully. Trip ID:", tripId);
         setCurrentTripId(tripId);
         setIsLoading(false);
@@ -346,28 +675,75 @@ export default function RideRequestScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      {/* Real-Time Map with Route */}
+      {/* Real-Time Map with Route & Demo Cars */}
       <View style={styles.mapContainer}>
-        <MapView
-          style={styles.map}
-          provider={PROVIDER_GOOGLE}
-          initialRegion={mapRegion}
-        >
-          <Marker coordinate={pickupCoords} title="Pickup" pinColor="#6C006C" />
-          <Marker
-            coordinate={destinationCoords}
-            title="Destination"
-            pinColor="#FF3B30"
+        <MapView style={styles.map} mapType="none" initialRegion={mapRegion}>
+          <UrlTile
+            urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            maximumZ={19}
           />
-          {driverLocation && (
-            <Marker coordinate={driverLocation} title="Driver">
-              <View style={styles.driverMarker}>
-                <Ionicons name="car" size={20} color="#FFFFFF" />
+          {/* User Pickup Marker Only */}
+          <Marker
+            coordinate={pickupCoords}
+            title="Your Pickup Location"
+            pinColor="#6C006C"
+          >
+            <View style={styles.userMarker}>
+              <Ionicons name="location" size={24} color="#FFFFFF" />
+            </View>
+          </Marker>
+
+          {/* Demo Car Markers (Simulated Nearby Drivers) */}
+          {demoCars.map((car) => (
+            <Marker
+              key={car.id}
+              coordinate={{ latitude: car.latitude, longitude: car.longitude }}
+              title="Available Driver"
+            >
+              <View
+                style={[
+                  styles.carMarker,
+                  { transform: [{ rotate: `${car.rotation}deg` }] },
+                ]}
+              >
+                <Ionicons name="car" size={22} color="#6C006C" />
+              </View>
+            </Marker>
+          ))}
+
+          {/* Actual Driver Marker (when searching/found) */}
+          {driverLocation && state !== "request" && (
+            <Marker coordinate={driverLocation} title="Your Driver">
+              <View style={styles.activeDriverMarker}>
+                <Ionicons name="car" size={24} color="#FFFFFF" />
               </View>
             </Marker>
           )}
-          {/* Route polyline with real directions */}
-          {routeCoordinates.length > 0 && (
+
+          {/* Driver-to-pickup route (pre-pickup navigation) */}
+          {driverRouteCoordinates.length > 0 &&
+            state !== "request" &&
+            tripPhase !== TripPhase.ON_TRIP && (
+              <Polyline
+                coordinates={driverRouteCoordinates}
+                strokeColor="#FF9500"
+                strokeWidth={4}
+                lineDashPattern={[6, 4]}
+              />
+            )}
+
+          {/* Main trip route (pickup → destination) */}
+          {tripPhase === TripPhase.ON_TRIP && mainTripRoute.length > 0 && (
+            <Polyline
+              coordinates={mainTripRoute}
+              strokeColor="#6C006C"
+              strokeWidth={5}
+              lineDashPattern={[0]}
+            />
+          )}
+
+          {/* Initial route preview (request/searching) */}
+          {tripPhase !== TripPhase.ON_TRIP && routeCoordinates.length > 0 && (
             <Polyline
               coordinates={routeCoordinates}
               strokeColor="#6C006C"
@@ -376,7 +752,7 @@ export default function RideRequestScreen() {
             />
           )}
           {/* Fallback simple line if no route */}
-          {routeCoordinates.length === 0 && (
+          {tripPhase !== TripPhase.ON_TRIP && routeCoordinates.length === 0 && (
             <Polyline
               coordinates={[pickupCoords, destinationCoords]}
               strokeColor="#6C006C"
@@ -486,9 +862,11 @@ export default function RideRequestScreen() {
                 >
                   <View style={styles.miniAvatar} />
                   <ThemedView ml={12} bg="transparent">
-                    <ThemedText weight="bold">{offer.driverName}</ThemedText>
+                    <ThemedText weight="bold">
+                      {offer.driver.fullName}
+                    </ThemedText>
                     <ThemedText size="xs" color="#687076">
-                      {offer.vehicleModel}
+                      ⭐ {offer.driver.averageRating?.toFixed(1) || "N/A"}
                     </ThemedText>
                   </ThemedView>
                   <ThemedView ml="auto" align="flex-end" bg="transparent">
@@ -560,7 +938,9 @@ export default function RideRequestScreen() {
 
             <ThemedView style={styles.arrivalStatus} py={12} px={16}>
               <ThemedText weight="bold" color="#0284C7">
-                Arriving soon (3 mins)
+                {driverEta
+                  ? `Arriving in ${driverEta}`
+                  : "Calculating arrival..."}
               </ThemedText>
             </ThemedView>
 
@@ -614,7 +994,6 @@ const styles = StyleSheet.create({
     borderColor: "#F3F4F6",
   },
   infoRow: {
-    backgroundColor: "#F9FAFB",
     paddingHorizontal: 10,
   },
   mainButton: {
@@ -664,6 +1043,42 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     height: 60,
     borderColor: "#FF3B30",
+  },
+  userMarker: {
+    backgroundColor: "#6C006C",
+    padding: 6,
+    borderRadius: 14,
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  carMarker: {
+    backgroundColor: "#FFFFFF",
+    padding: 6,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#6C006C",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  activeDriverMarker: {
+    backgroundColor: "#FF9500",
+    padding: 6,
+    borderRadius: 14,
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
   driverMarker: {
     backgroundColor: "#6C006C",

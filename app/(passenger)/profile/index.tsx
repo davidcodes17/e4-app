@@ -27,9 +27,9 @@ export default function ProfileScreen() {
 
   const fetchProfile = async () => {
     try {
-      const response: any = await AuthService.getProfile();
+      const response = await AuthService.getProfile();
       if (response.success) {
-        setUser(response?.data?.data);
+        setUser(response.data);
       }
     } catch (error) {
       console.error("Failed to fetch profile:", error);
@@ -50,7 +50,7 @@ export default function ProfileScreen() {
       })
     : "—";
 
-  const rating = user?.rating?.average ?? 0;
+  const rating = user?.averageRating ?? 0;
   const tripCount = user?.totalTrips ?? 0;
   const cancelRatePercent = user?.cancelRate
     ? (user.cancelRate * 100).toFixed(1)
@@ -104,7 +104,9 @@ export default function ProfileScreen() {
           <ThemedText style={styles.userName}>
             {user?.firstName} {user?.lastName}
           </ThemedText>
-          <ThemedText style={styles.userEmail}>{user?.email}</ThemedText>
+          <ThemedText style={styles.userEmail}>
+            {user?.emailAddress || user?.email}
+          </ThemedText>
           <ThemedText style={styles.userPhone}>{user?.phoneNumber}</ThemedText>
 
           <View style={styles.statsRow}>
@@ -159,40 +161,43 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {user?.savedPlaces && user.savedPlaces.length > 0 && (
+        {(user?.savedPlacesHome || user?.savedPlacesWork) && (
           <View style={styles.section}>
             <ThemedText style={styles.sectionTitle}>Saved Places</ThemedText>
             <View style={styles.menuCard}>
-              {user.savedPlaces.map((place, idx) => (
-                <View key={place.id}>
-                  <View style={styles.savedPlaceItem}>
-                    <View style={styles.menuIconContainer}>
-                      <Ionicons
-                        name={
-                          place.label === "HOME"
-                            ? "home-outline"
-                            : place.label === "WORK"
-                              ? "briefcase-outline"
-                              : "location-outline"
-                        }
-                        size={20}
-                        color="#6C006C"
-                      />
-                    </View>
-                    <View style={styles.placeContent}>
-                      <ThemedText style={styles.placeLabel}>
-                        {place.label}
-                      </ThemedText>
-                      <ThemedText style={styles.placeAddress} numberOfLines={1}>
-                        {place.address}
-                      </ThemedText>
-                    </View>
+              {user?.savedPlacesHome && (
+                <View style={styles.savedPlaceItem}>
+                  <View style={styles.menuIconContainer}>
+                    <Ionicons name="home-outline" size={20} color="#6C006C" />
                   </View>
-                  {idx < user.savedPlaces!.length - 1 && (
-                    <View style={styles.menuDivider} />
-                  )}
+                  <View style={styles.placeContent}>
+                    <ThemedText style={styles.placeLabel}>HOME</ThemedText>
+                    <ThemedText style={styles.placeAddress} numberOfLines={1}>
+                      {user.savedPlacesHome}
+                    </ThemedText>
+                  </View>
                 </View>
-              ))}
+              )}
+              {user?.savedPlacesHome && user?.savedPlacesWork && (
+                <View style={styles.menuDivider} />
+              )}
+              {user?.savedPlacesWork && (
+                <View style={styles.savedPlaceItem}>
+                  <View style={styles.menuIconContainer}>
+                    <Ionicons
+                      name="briefcase-outline"
+                      size={20}
+                      color="#6C006C"
+                    />
+                  </View>
+                  <View style={styles.placeContent}>
+                    <ThemedText style={styles.placeLabel}>WORK</ThemedText>
+                    <ThemedText style={styles.placeAddress} numberOfLines={1}>
+                      {user.savedPlacesWork}
+                    </ThemedText>
+                  </View>
+                </View>
+              )}
             </View>
           </View>
         )}

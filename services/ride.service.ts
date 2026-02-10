@@ -1,6 +1,6 @@
 import apiClient from "./api-client";
 import { TokenService } from "./token.service";
-import { ApiResponse, EstimateData, Trip } from "./types";
+import { ApiResponse, EstimateData, PriceOffer, Trip } from "./types";
 
 export const RideService = {
   async requestRide(data: any): Promise<ApiResponse<Trip>> {
@@ -49,19 +49,47 @@ export const RideService = {
     return response.data;
   },
 
+  /**
+   * Passenger accepts a driver's price offer
+   */
   async acceptOffer(offerId: string) {
     const response = await apiClient.post(
-      `/api/v1/rides/accept-offer/${offerId}`,
+      `/api/v1/trips/accept-offer/${offerId}`,
     );
-    // The doc doesn't mention accept-offer, but I'll keep it as it might be internal or pending doc update.
+    return response.data;
+  },
+
+  /**
+   * Driver accepts a trip request
+   */
+  async acceptRideRequest(tripId: string) {
+    const response = await apiClient.post(
+      `/api/v1/trips/driver/accept-request/${tripId}`,
+    );
     return response.data;
   },
 
   /**
    * Fetch price offers for a specific trip
    * Used for polling instead of WebSocket
+   *
+   * Response Structure:
+   * {
+   *   "success": true,
+   *   "message": "Offers fetched successfully",
+   *   "data": [
+   *     {
+   *       "id": "offer-123",
+   *       "tripId": "trip-456",
+   *       "driver": { id, emailAddress, fullName, phoneNumber, profilePhotoUrl, averageRating },
+   *       "offeredPrice": 7500.0,
+   *       "accepted": false,
+   *       "createdAt": "2026-02-05T09:15:00Z"
+   *     }
+   *   ]
+   * }
    */
-  async getTripOffers(tripId: string): Promise<ApiResponse<any[]>> {
+  async getTripOffers(tripId: string): Promise<ApiResponse<PriceOffer[]>> {
     const response = await apiClient.get(`/api/v1/trips/${tripId}/offers`);
     return response.data;
   },
@@ -80,8 +108,19 @@ export const RideService = {
    * Used for polling to check for new ride requests
    */
   async getAvailableRides(): Promise<ApiResponse<Trip[]>> {
-    const response = await apiClient.get("/api/v1/rides/available");
-    return response.data;
+    const response = await apiClient.get("/api/v1/trips/available");
+    const apiResponse = response.data;
+    const trips = apiResponse?.data?.data || apiResponse?.data || [];
+
+    return {
+      success:
+        apiResponse?.success ??
+        apiResponse?.isSuccess ??
+        apiResponse?.status === "OK",
+      message: apiResponse?.message || "Available rides fetched",
+      data: trips,
+      timestamp: apiResponse?.timestamp || new Date().toISOString(),
+    };
   },
 
   /**
@@ -91,7 +130,7 @@ export const RideService = {
     tripId: string,
     offeredPrice: number,
   ): Promise<ApiResponse<any>> {
-    const response = await apiClient.post("/api/v1/rides/propose-price", {
+    const response = await apiClient.post("/api/v1/trips/propose-price", {
       tripId,
       offeredPrice,
     });
@@ -102,6 +141,21 @@ export const RideService = {
    * Update driver location during active trip
    */
   async updateDriverLocation(data: {
+    tripId: string;
+    latitude: number;
+    longitude: number;
+  }): Promise<ApiResponse<any>> {
+    const response = await apiClient.post(
+      "/api/v1/rides/update-location",
+      data,
+    );
+    return response.data;
+  },
+
+  /**
+   * Update passenger location during active trip
+   */
+  async updatePassengerLocation(data: {
     tripId: string;
     latitude: number;
     longitude: number;

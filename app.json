@@ -38,7 +38,17 @@
         }
       ],
       "expo-secure-store",
-      "expo-maps"
+      "expo-maps",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow E4 to use your location to connect you with drivers and track your ride.",
+          "locationAlwaysPermission": "Allow E4 to use your location to connect you with drivers and track your ride.",
+          "locationWhenInUsePermission": "Allow E4 to use your location to connect you with drivers and track your ride.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isIosBackgroundLocationEnabled": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

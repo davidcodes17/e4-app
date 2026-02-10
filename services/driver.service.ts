@@ -40,6 +40,15 @@ export const DriverService = {
 
   async getProfile(): Promise<ApiResponse<Driver>> {
     const response = await apiClient.get("/api/v1/driver/profile");
+    // Handle nested response: response.data.data.data
+    if (response.data?.data?.data) {
+      return {
+        success: response.data.success,
+        message: response.data.message,
+        data: response.data.data.data,
+        timestamp: response.data.timestamp,
+      };
+    }
     return response.data;
   },
   async updateProfile(data: Partial<Driver>): Promise<ApiResponse<Driver>> {

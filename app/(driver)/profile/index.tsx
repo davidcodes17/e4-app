@@ -51,7 +51,7 @@ export default function DriverProfileScreen() {
       })
     : "—";
 
-  const rating = driver?.rating?.average ?? 0;
+  const rating = driver?.averageRating ?? 0;
   const tripCount = driver?.totalTrips ?? 0;
   const cancelRatePercent = driver?.cancelRate
     ? (driver.cancelRate * 100).toFixed(1)
@@ -105,7 +105,9 @@ export default function DriverProfileScreen() {
           <ThemedText style={styles.userName}>
             {driver?.firstName} {driver?.lastName}
           </ThemedText>
-          <ThemedText style={styles.userEmail}>{driver?.email}</ThemedText>
+          <ThemedText style={styles.userEmail}>
+            {driver?.emailAddress || driver?.email}
+          </ThemedText>
           <ThemedText style={styles.userPhone}>
             {driver?.phoneNumber}
           </ThemedText>
@@ -174,42 +176,45 @@ export default function DriverProfileScreen() {
           </View>
         </View>
 
-        {driver?.savedPlaces && driver.savedPlaces.length > 0 && (
+        {(driver?.savedPlacesHome || driver?.savedPlacesWork) && (
           <View style={styles.section}>
             <ThemedText style={styles.sectionTitle}>
               Favorite Locations
             </ThemedText>
             <View style={styles.menuCard}>
-              {driver.savedPlaces.map((place, idx) => (
-                <View key={place.id}>
-                  <View style={styles.savedPlaceItem}>
-                    <View style={styles.menuIconContainer}>
-                      <Ionicons
-                        name={
-                          place.label === "HOME"
-                            ? "home-outline"
-                            : place.label === "WORK"
-                              ? "briefcase-outline"
-                              : "location-outline"
-                        }
-                        size={20}
-                        color="#6C006C"
-                      />
-                    </View>
-                    <View style={styles.placeContent}>
-                      <ThemedText style={styles.placeLabel}>
-                        {place.label}
-                      </ThemedText>
-                      <ThemedText style={styles.placeAddress} numberOfLines={1}>
-                        {place.address}
-                      </ThemedText>
-                    </View>
+              {driver?.savedPlacesHome && (
+                <View style={styles.savedPlaceItem}>
+                  <View style={styles.menuIconContainer}>
+                    <Ionicons name="home-outline" size={20} color="#6C006C" />
                   </View>
-                  {idx < driver.savedPlaces.length - 1 && (
-                    <View style={styles.menuDivider} />
-                  )}
+                  <View style={styles.placeContent}>
+                    <ThemedText style={styles.placeLabel}>HOME</ThemedText>
+                    <ThemedText style={styles.placeAddress} numberOfLines={1}>
+                      {driver.savedPlacesHome}
+                    </ThemedText>
+                  </View>
                 </View>
-              ))}
+              )}
+              {driver?.savedPlacesHome && driver?.savedPlacesWork && (
+                <View style={styles.menuDivider} />
+              )}
+              {driver?.savedPlacesWork && (
+                <View style={styles.savedPlaceItem}>
+                  <View style={styles.menuIconContainer}>
+                    <Ionicons
+                      name="briefcase-outline"
+                      size={20}
+                      color="#6C006C"
+                    />
+                  </View>
+                  <View style={styles.placeContent}>
+                    <ThemedText style={styles.placeLabel}>WORK</ThemedText>
+                    <ThemedText style={styles.placeAddress} numberOfLines={1}>
+                      {driver.savedPlacesWork}
+                    </ThemedText>
+                  </View>
+                </View>
+              )}
             </View>
           </View>
         )}

@@ -57,69 +57,15 @@ export const AuthService = {
 
   async getProfile(): Promise<ApiResponse<User>> {
     const response = await apiClient.get("/api/v1/auth/profile");
-    // API returns nested structure: { success, data: { isSuccess, data: { actual profile } } }
-    const apiResponse = response.data;
-    const profileData = apiResponse?.data?.data;
-
-    // Map backend response to User type
-    if (profileData) {
-      const mappedUser: User = {
-        id: profileData.id,
-        firstName: profileData.firstName,
-        lastName: profileData.lastName,
-        middleName: profileData.middleName,
-        email: profileData.emailAddress,
-        phoneNumber: profileData.phoneNumber,
-        gender: profileData.gender,
-        role: profileData.role,
-        profilePhotoUrl: profileData.profilePhotoUrl,
-        rating: profileData.averageRating
-          ? {
-              average: profileData.averageRating,
-              count: profileData.ratingCount || 0,
-            }
-          : undefined,
-        totalTrips: profileData.totalTrips,
-        cancelRate: profileData.cancelRate,
-        walletBalance: profileData.walletBalance,
-        promoCredits: profileData.promoCredits,
-        savedPlaces: [
-          ...(profileData.savedPlacesHome
-            ? [
-                {
-                  id: "home",
-                  label: "HOME" as const,
-                  address: profileData.savedPlacesHome,
-                  latitude: 0,
-                  longitude: 0,
-                },
-              ]
-            : []),
-          ...(profileData.savedPlacesWork
-            ? [
-                {
-                  id: "work",
-                  label: "WORK" as const,
-                  address: profileData.savedPlacesWork,
-                  latitude: 0,
-                  longitude: 0,
-                },
-              ]
-            : []),
-        ],
-        createdAt: profileData.memberSince,
-        updatedAt: profileData.lastRideAt,
-      };
-
+    // Handle nested response: response.data.data.data
+    if (response.data?.data?.data) {
       return {
-        ...apiResponse,
-        data: {
-          ...apiResponse.data,
-          data: mappedUser,
-        },
+        success: response.data.success,
+        message: response.data.message,
+        data: response.data.data.data,
+        timestamp: response.data.timestamp,
       };
     }
-
     return response.data;
   },
 

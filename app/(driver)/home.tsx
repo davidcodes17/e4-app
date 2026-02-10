@@ -3,21 +3,23 @@ import { useToast } from "@/components/common/toast-provider";
 import { ThemedButton } from "@/components/themed-button";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { DirectionsService } from "@/services/directions.service";
 import { RideService } from "@/services/ride.service";
+import { Trip } from "@/services/types";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Location from "expo-location";
 import { Href, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    View,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker, Polyline, UrlTile } from "react-native-maps";
 
 /**
  * DriverHomeScreen - Driver waiting for and accepting ride requests
@@ -28,7 +30,7 @@ import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
  * - Sends location updates every 3 seconds via REST during active trip
  *
  * API Endpoints Used:
- * - GET /api/v1/rides/available - Fetch available ride requests
+ * - GET /api/v1/trips/available - Fetch available ride requests
  * - GET /api/v1/trips/{tripId} - Fetch current trip status
  * - POST /api/v1/rides/propose-price - Send price offer to passenger
  * - POST /api/v1/rides/update-location - Update driver location
@@ -36,23 +38,39 @@ import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
 type DriverState = "online" | "incoming" | "modify_price" | "accepted";
 
+interface RouteCoordinate {
+  latitude: number;
+  longitude: number;
+}
+
 export default function DriverHomeScreen() {
   const router = useRouter();
   const toast = useToast();
   const [state, setState] = useState<DriverState>("online");
   const [newFare, setNewFare] = useState("5000");
   const [isLoading, setIsLoading] = useState(false);
-  const [currentTrip, setCurrentTrip] = useState<any>(null);
+  const [currentTrip, setCurrentTrip] = useState<Trip | null>(null);
   const [location, setLocation] = useState<Location.LocationObject | null>(
     null,
   );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [sentOfferPrice, setSentOfferPrice] = useState<number | null>(null);
+  const [passengerRouteCoordinates, setPassengerRouteCoordinates] = useState<
+    RouteCoordinate[]
+  >([]);
+  const [passengerEta, setPassengerEta] = useState<string | null>(null);
+  const [mainTripRouteCoordinates, setMainTripRouteCoordinates] = useState<
+    RouteCoordinate[]
+  >([]);
+  const [mainTripEta, setMainTripEta] = useState<string | null>(null);
+  const [tripStatus, setTripStatus] = useState<Trip["status"] | null>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
+  const lastTripStatusRef = useRef<Trip["status"] | null>(null);
 
   useEffect(() => {
     // ============= REST-BASED POLLING FOR RIDE REQUESTS =============
@@ -66,6 +84,7 @@ export default function DriverHomeScreen() {
         try {
           // Fetch available ride requests from backend
           const response = await RideService.getAvailableRides();
+          console.log(response, "SHSSH");
           if (response.success && response.data && response.data.length > 0) {
             const newTrip = response.data[0]; // Get first available ride
 
@@ -110,9 +129,33 @@ export default function DriverHomeScreen() {
       const pollTripStatus = async () => {
         try {
           const response = await RideService.getTripStatus(currentTrip.id);
+          console.log(response, "SKJSJ");
           if (response.success && response.data) {
-            const trip = response.data;
+            // Handle nested response structure: { success, data: { data: trip } }
+            const trip = response.data.data || response.data;
             console.log(`📊 Trip Status: ${trip.status}`);
+            setTripStatus(trip.status);
+            setCurrentTrip(trip);
+
+            if (lastTripStatusRef.current !== trip.status) {
+              lastTripStatusRef.current = trip.status;
+
+              if (trip.status === "ARRIVED") {
+                toast.show({
+                  type: "info",
+                  title: "Arrived",
+                  message: "You have arrived at the pickup location.",
+                });
+              }
+
+              if (trip.status === "ONGOING") {
+                toast.show({
+                  type: "success",
+                  title: "Trip started",
+                  message: "Navigate to the passenger's destination.",
+                });
+              }
+            }
 
             if (trip.status === "CANCELLED") {
               console.log("❌ Trip cancelled by passenger");
@@ -123,6 +166,11 @@ export default function DriverHomeScreen() {
               });
               setState("online");
               setCurrentTrip(null);
+              setTripStatus(null);
+              setPassengerRouteCoordinates([]);
+              setPassengerEta(null);
+              setMainTripRouteCoordinates([]);
+              setMainTripEta(null);
 
               // Stop polling
               if (pollingIntervalRef.current) {
@@ -138,6 +186,11 @@ export default function DriverHomeScreen() {
               });
               setState("online");
               setCurrentTrip(null);
+              setTripStatus(null);
+              setPassengerRouteCoordinates([]);
+              setPassengerEta(null);
+              setMainTripRouteCoordinates([]);
+              setMainTripEta(null);
 
               // Stop polling
               if (pollingIntervalRef.current) {
@@ -157,6 +210,11 @@ export default function DriverHomeScreen() {
               });
               setState("online");
               setCurrentTrip(null);
+              setTripStatus(null);
+              setPassengerRouteCoordinates([]);
+              setPassengerEta(null);
+              setMainTripRouteCoordinates([]);
+              setMainTripEta(null);
 
               // Stop polling
               if (pollingIntervalRef.current) {
@@ -190,7 +248,9 @@ export default function DriverHomeScreen() {
     if (state === "accepted" && currentTrip?.id) {
       const updateLocation = async () => {
         try {
-          const freshLocation = await Location.getCurrentPositionAsync({});
+          const freshLocation = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
 
           // Send location update via REST API
           await RideService.updateDriverLocation({
@@ -225,22 +285,138 @@ export default function DriverHomeScreen() {
 
   useEffect(() => {
     (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setErrorMsg("Permission to access location was denied");
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          setErrorMsg("Permission to access location was denied");
+          toast.show({
+            type: "error",
+            title: "Location Permission Required",
+            message: "Please enable location access in your device settings.",
+          });
+          return;
+        }
+
+        let currentLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+        setLocation(currentLocation);
+      } catch (error) {
+        console.error("❌ Failed to get location:", error);
+        setErrorMsg("Failed to get location. Please check your GPS settings.");
+        toast.show({
+          type: "error",
+          title: "Location Error",
+          message: "Failed to get location. Please ensure GPS is enabled.",
+        });
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    const fetchPassengerRoute = async () => {
+      if (!location || !currentTrip) {
+        setPassengerRouteCoordinates([]);
+        setPassengerEta(null);
+        setMainTripRouteCoordinates([]);
+        setMainTripEta(null);
         return;
       }
 
-      let currentLocation = await Location.getCurrentPositionAsync({});
-      setLocation(currentLocation);
-    })();
-  }, []);
+      // Pre-pickup navigation (driver → passenger)
+      if (
+        tripStatus !== "ONGOING" &&
+        currentTrip.pickupLatitude &&
+        currentTrip.pickupLongitude
+      ) {
+        try {
+          const directions = await DirectionsService.getDirections(
+            location.coords.latitude,
+            location.coords.longitude,
+            currentTrip.pickupLatitude,
+            currentTrip.pickupLongitude,
+          );
+
+          if (directions) {
+            setPassengerRouteCoordinates(directions.coordinates);
+            setPassengerEta(
+              DirectionsService.formatDuration(directions.duration),
+            );
+          } else {
+            setPassengerRouteCoordinates([
+              {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+              },
+              {
+                latitude: currentTrip.pickupLatitude,
+                longitude: currentTrip.pickupLongitude,
+              },
+            ]);
+            setPassengerEta(null);
+          }
+        } catch (error) {
+          console.error("Failed to fetch passenger route:", error);
+          setPassengerRouteCoordinates([]);
+          setPassengerEta(null);
+        }
+      }
+
+      // Main trip navigation (pickup → destination)
+      if (
+        tripStatus === "ONGOING" &&
+        currentTrip.dropOffLatitude &&
+        currentTrip.dropOffLongitude
+      ) {
+        try {
+          const directions = await DirectionsService.getDirections(
+            location.coords.latitude,
+            location.coords.longitude,
+            currentTrip.dropOffLatitude,
+            currentTrip.dropOffLongitude,
+          );
+
+          if (directions) {
+            setMainTripRouteCoordinates(directions.coordinates);
+            setMainTripEta(
+              DirectionsService.formatDuration(directions.duration),
+            );
+          } else {
+            setMainTripRouteCoordinates([
+              {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+              },
+              {
+                latitude: currentTrip.dropOffLatitude,
+                longitude: currentTrip.dropOffLongitude,
+              },
+            ]);
+            setMainTripEta(null);
+          }
+        } catch (error) {
+          console.error("Failed to fetch main trip route:", error);
+          setMainTripRouteCoordinates([]);
+          setMainTripEta(null);
+        }
+      }
+    };
+
+    fetchPassengerRoute();
+  }, [
+    location,
+    currentTrip?.pickupLatitude,
+    currentTrip?.pickupLongitude,
+    currentTrip?.dropOffLatitude,
+    currentTrip?.dropOffLongitude,
+    tripStatus,
+  ]);
 
   const handleAccept = async () => {
     if (!currentTrip) return;
     setIsLoading(true);
     try {
-      await RideService.acceptOffer(currentTrip.id);
+      await RideService.acceptRideRequest(currentTrip.id);
       setState("accepted");
     } catch (error: any) {
       toast.show({
@@ -259,7 +435,10 @@ export default function DriverHomeScreen() {
       `💰 Proposing price ₦${offeredPrice} for trip ${currentTrip.id}`,
     );
 
+    // ============= OPTIMISTIC UPDATE: Update UI immediately =============
+    setSentOfferPrice(offeredPrice);
     setIsLoading(true);
+
     try {
       // ============= SEND PRICE OFFER VIA REST API =============
       // Server will send this offer to the passenger
@@ -275,10 +454,14 @@ export default function DriverHomeScreen() {
           title: "Offer sent",
           message: `Offered ₦${offeredPrice.toLocaleString()} to rider`,
         });
-        setState("online");
-        setCurrentTrip(null);
+        // ============= RESET STATE AFTER SUCCESS =============
+        setState("incoming"); // Stay in incoming to wait for acceptance
+        setSentOfferPrice(null);
+        setNewFare("5000");
       } else {
         console.error("❌ Failed to send price offer");
+        // ============= REVERT OPTIMISTIC UPDATE ON ERROR =============
+        setSentOfferPrice(null);
         toast.show({
           type: "error",
           title: "Offer failed",
@@ -287,6 +470,8 @@ export default function DriverHomeScreen() {
       }
     } catch (error: any) {
       console.error("❌ Price offer error:", error);
+      // ============= REVERT OPTIMISTIC UPDATE ON ERROR =============
+      setSentOfferPrice(null);
       toast.show({
         type: "error",
         title: "Offer failed",
@@ -320,6 +505,15 @@ export default function DriverHomeScreen() {
         longitudeDelta: 0.05,
       };
 
+  const passengerName = currentTrip?.user?.fullName
+    ? currentTrip.user.fullName
+    : [currentTrip?.user?.firstName, currentTrip?.user?.lastName]
+        .filter(Boolean)
+        .join(" ") || "Passenger";
+
+  const passengerEmail =
+    currentTrip?.user?.emailAddress || currentTrip?.user?.email || "N/A";
+
   return (
     <ThemedView style={styles.container}>
       {/* Real-Time Map */}
@@ -342,11 +536,15 @@ export default function DriverHomeScreen() {
         ) : (
           <MapView
             style={styles.map}
-            provider={PROVIDER_GOOGLE}
+            mapType="none"
             initialRegion={initialRegion}
             showsUserLocation={true}
             followsUserLocation={true}
           >
+            <UrlTile
+              urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+              maximumZ={19}
+            />
             {location && (
               <Marker
                 coordinate={{
@@ -361,6 +559,37 @@ export default function DriverHomeScreen() {
                 </View>
               </Marker>
             )}
+
+            {currentTrip?.pickupLatitude && currentTrip?.pickupLongitude && (
+              <Marker
+                coordinate={{
+                  latitude: currentTrip.pickupLatitude,
+                  longitude: currentTrip.pickupLongitude,
+                }}
+                title="Passenger Pickup"
+                pinColor="#FF3B30"
+              />
+            )}
+
+            {tripStatus !== "ONGOING" &&
+              passengerRouteCoordinates.length > 0 && (
+                <Polyline
+                  coordinates={passengerRouteCoordinates}
+                  strokeColor="#FF9500"
+                  strokeWidth={4}
+                  lineDashPattern={[6, 4]}
+                />
+              )}
+
+            {tripStatus === "ONGOING" &&
+              mainTripRouteCoordinates.length > 0 && (
+                <Polyline
+                  coordinates={mainTripRouteCoordinates}
+                  strokeColor="#6C006C"
+                  strokeWidth={5}
+                  lineDashPattern={[0]}
+                />
+              )}
           </MapView>
         )}
       </View>
@@ -404,8 +633,15 @@ export default function DriverHomeScreen() {
               color="#6C006C"
               style={styles.cardHeader}
             >
-              New ride request
+              {sentOfferPrice !== null ? "✅ Offer Sent!" : "New ride request"}
             </ThemedText>
+
+            <ThemedView mb={16} bg="transparent">
+              <ThemedText weight="bold">{passengerName}</ThemedText>
+              <ThemedText size="xs" color="#687076">
+                {passengerEmail}
+              </ThemedText>
+            </ThemedView>
 
             <ThemedView style={styles.locationContainer} mb={20}>
               <ThemedView
@@ -443,25 +679,51 @@ export default function DriverHomeScreen() {
               </ThemedView>
               <ThemedView bg="transparent">
                 <ThemedText size="xs" color="#687076">
+                  Duration
+                </ThemedText>
+                <ThemedText weight="bold">
+                  {currentTrip?.duration || "--"}
+                </ThemedText>
+              </ThemedView>
+              <ThemedView bg="transparent">
+                <ThemedText size="xs" color="#687076">
                   Fare
                 </ThemedText>
                 <ThemedText size="lg" weight="bold" color="#6C006C">
-                  ₦{(currentTrip?.initialFare || 0).toLocaleString()}
+                  ₦
+                  {(
+                    sentOfferPrice ??
+                    currentTrip?.price ??
+                    currentTrip?.initialFare ??
+                    0
+                  ).toLocaleString()}
                 </ThemedText>
               </ThemedView>
             </ThemedView>
 
             <ThemedView flexDirection="row" gap={12} bg="transparent">
               <ThemedButton
-                text="Modify Price"
+                text={sentOfferPrice !== null ? "Offer Sent ✓" : "Modify Price"}
                 variant="outline"
-                onPress={() => setState("modify_price")}
+                onPress={() => {
+                  // Pre-fill the input with current trip fare
+                  setNewFare(
+                    (
+                      currentTrip?.price ??
+                      currentTrip?.initialFare ??
+                      5000
+                    ).toString(),
+                  );
+                  setState("modify_price");
+                }}
+                disabled={sentOfferPrice !== null}
                 style={{ flex: 1 }}
               />
               <ThemedButton
-                text="Accept Ride"
+                text={sentOfferPrice !== null ? "Waiting..." : "Accept Ride"}
                 variant="solid"
                 onPress={handleAccept}
+                disabled={sentOfferPrice !== null || isLoading}
                 style={{ flex: 1.5 }}
               />
             </ThemedView>
@@ -505,11 +767,24 @@ export default function DriverHomeScreen() {
               <ThemedButton
                 text="Send Offer"
                 variant="solid"
-                onPress={() => setState("incoming")}
+                onPress={async () => {
+                  const price = parseFloat(newFare);
+                  if (isNaN(price) || price <= 0) {
+                    toast.show({
+                      type: "error",
+                      title: "Invalid price",
+                      message: "Please enter a valid amount",
+                    });
+                    return;
+                  }
+                  await handleProposePrice(price);
+                }}
+                disabled={isLoading}
               />
               <TouchableOpacity
                 onPress={() => setState("incoming")}
                 style={styles.cancelLink}
+                disabled={isLoading}
               >
                 <ThemedText align="center" color="#687076">
                   Cancel

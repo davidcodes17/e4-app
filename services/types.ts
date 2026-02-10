@@ -5,6 +5,19 @@ export interface ApiResponse<T> {
   timestamp: string;
 }
 
+/**
+ * TripPhase - Represents the current phase of a trip
+ * Used for state transitions and UI updates
+ */
+export enum TripPhase {
+  IDLE = "IDLE",
+  DRIVER_ASSIGNED = "DRIVER_ASSIGNED",
+  EN_ROUTE_TO_PICKUP = "EN_ROUTE_TO_PICKUP",
+  PICKED_UP = "PICKED_UP",
+  ON_TRIP = "ON_TRIP",
+  COMPLETED = "COMPLETED",
+}
+
 export interface NestedApiResponse<T> {
   isSuccess: boolean;
   status: string;
@@ -17,37 +30,31 @@ export interface LoginData {
   role: "USER" | "DRIVER";
 }
 
-export interface SavedPlace {
-  id: string;
-  label: "HOME" | "WORK" | "OTHER";
-  address: string;
-  latitude: number;
-  longitude: number;
-}
-
-export interface UserRating {
-  average: number;
-  count: number;
-}
-
 export interface User {
   id: string;
   firstName: string;
   lastName: string;
   middleName?: string;
-  email: string;
+  email?: string;
+  emailAddress?: string;
   phoneNumber: string;
   gender: "MALE" | "FEMALE" | "OTHER";
   role?: "USER" | "DRIVER";
-  profilePhotoUrl?: string;
-  rating?: UserRating;
-  totalTrips?: number;
-  cancelRate?: number;
-  savedPlaces?: SavedPlace[];
-  walletBalance?: number;
-  promoCredits?: number;
+  profilePhotoUrl?: string | null;
+  averageRating?: number | null;
+  ratingCount?: number | null;
+  totalTrips?: number | null;
+  cancelRate?: number | null;
+  savedPlacesHome?: string | null;
+  savedPlacesWork?: string | null;
+  walletBalance?: number | null;
+  promoCredits?: number | null;
+  lastRideAt?: string | null;
   createdAt: string;
   updatedAt?: string;
+  deleted?: boolean;
+  enabled?: boolean;
+  username?: string;
 }
 
 export interface Driver extends User {
@@ -65,9 +72,12 @@ export interface Driver extends User {
  */
 export interface UserInfo {
   id: string;
-  emailAddress: string;
-  fullName: string;
-  phoneNumber: string;
+  emailAddress?: string;
+  email?: string;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
 }
 
 /**
@@ -76,9 +86,16 @@ export interface UserInfo {
  */
 export interface DriverInfo {
   id: string;
-  emailAddress: string;
-  fullName: string;
+  email?: string;
+  emailAddress?: string;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+  carName?: string;
   licensePlate?: string;
+  plateNumber?: string;
+  rating?: number;
 }
 
 /**
@@ -120,6 +137,8 @@ export interface Trip {
   pickupLongitude?: number;
   dropOffLatitude?: number;
   dropOffLongitude?: number;
+  driverLatitude?: number;
+  driverLongitude?: number;
   duration?: string;
   initialFare?: number;
   userId?: string;
@@ -131,4 +150,23 @@ export interface EstimateData {
   duration: number;
   estimate: number;
   currency: string;
+}
+/**
+ * PriceOffer - Driver's price proposal for a trip
+ * Returned from GET /api/v1/trips/{tripId}/offers
+ */
+export interface PriceOffer {
+  id: string;
+  tripId: string;
+  driver: {
+    id: string;
+    emailAddress: string;
+    fullName: string;
+    phoneNumber: string;
+    profilePhotoUrl?: string;
+    averageRating?: number;
+  };
+  offeredPrice: number;
+  accepted: boolean;
+  createdAt: string;
 }

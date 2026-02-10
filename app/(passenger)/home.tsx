@@ -5,6 +5,7 @@ import LocationSuggestions, {
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { OpenStreetMapService } from "@/services/openstreetmap.service";
+import { useDebouncedCallback } from "@/utils/debounce";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Location from "expo-location";
 import { Href, useRouter } from "expo-router";
@@ -19,7 +20,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker, UrlTile } from "react-native-maps";
 
 const RadarLoader = () => {
   const pulseAnim = useRef(new Animated.Value(0)).current;
@@ -159,13 +160,12 @@ export default function PassengerHomeScreen() {
     },
   ];
 
-  // Handle pickup location change with OpenStreetMap (free)
-  const handlePickupChange = async (text: string) => {
-    setPickup(text);
+  // ============= FETCH PICKUP SUGGESTIONS (NO DEBOUNCE) =============
+  const fetchPickupSuggestions = async (text: string) => {
     if (text.length >= 2) {
       setIsLoadingPickupSuggestions(true);
+      // Keep showing suggestions while loading (don't clear)
       try {
-        // Get Nominatim suggestions (free, no API key)
         const predictions = await OpenStreetMapService.getPlacePredictions(
           text,
           location
@@ -176,7 +176,6 @@ export default function PassengerHomeScreen() {
             : undefined,
         );
 
-        // Convert to LocationSuggestion format, prioritize saved locations
         const suggestions = [
           ...savedLocations.filter(
             (loc) =>
@@ -192,33 +191,41 @@ export default function PassengerHomeScreen() {
           })),
         ];
 
-        setPickupSuggestions(suggestions.slice(0, 8));
-        setShowPickupSuggestions(true);
+        // Only update when new suggestions are ready
+        const nextSuggestions = suggestions.slice(0, 8);
+        setPickupSuggestions(nextSuggestions);
+        setShowPickupSuggestions(nextSuggestions.length > 0);
       } catch (error) {
         console.error("Error fetching pickup suggestions:", error);
-        // Fallback to local filtering
         const filtered = [...savedLocations, ...recentLocations].filter(
           (loc) =>
             loc.name.toLowerCase().includes(text.toLowerCase()) ||
             loc.address.toLowerCase().includes(text.toLowerCase()),
         );
+        // Only update when fallback data is ready
         setPickupSuggestions(filtered);
-        setShowPickupSuggestions(true);
+        setShowPickupSuggestions(filtered.length > 0);
       } finally {
         setIsLoadingPickupSuggestions(false);
       }
     } else {
+      // Hide suggestions when text is too short, but keep previous data
       setShowPickupSuggestions(false);
+      setIsLoadingPickupSuggestions(false);
     }
   };
 
-  // Handle destination location change with OpenStreetMap (free)
-  const handleDestinationChange = async (text: string) => {
-    setDestination(text);
+  // ============= DEBOUNCED PICKUP CHANGE HANDLER (2000ms delay) =============
+  const handlePickupChange = useDebouncedCallback((text: string) => {
+    fetchPickupSuggestions(text);
+  }, 2000);
+
+  // ============= FETCH DESTINATION SUGGESTIONS (NO DEBOUNCE) =============
+  const fetchDestinationSuggestions = async (text: string) => {
     if (text.length >= 2) {
       setIsLoadingDestinationSuggestions(true);
+      // Keep showing suggestions while loading (don't clear)
       try {
-        // Get Nominatim suggestions (free, no API key)
         const predictions = await OpenStreetMapService.getPlacePredictions(
           text,
           location
@@ -229,7 +236,6 @@ export default function PassengerHomeScreen() {
             : undefined,
         );
 
-        // Convert to LocationSuggestion format, prioritize saved locations
         const suggestions = [
           ...savedLocations.filter(
             (loc) =>
@@ -250,11 +256,12 @@ export default function PassengerHomeScreen() {
           })),
         ];
 
-        setDestinationSuggestions(suggestions.slice(0, 8));
-        setShowDestinationSuggestions(true);
+        // Only update when new suggestions are ready
+        const nextSuggestions = suggestions.slice(0, 8);
+        setDestinationSuggestions(nextSuggestions);
+        setShowDestinationSuggestions(nextSuggestions.length > 0);
       } catch (error) {
         console.error("Error fetching destination suggestions:", error);
-        // Fallback to local filtering
         const filtered = [
           ...savedLocations,
           ...recentLocations,
@@ -264,15 +271,23 @@ export default function PassengerHomeScreen() {
             loc.name.toLowerCase().includes(text.toLowerCase()) ||
             loc.address.toLowerCase().includes(text.toLowerCase()),
         );
+        // Only update when fallback data is ready
         setDestinationSuggestions(filtered);
-        setShowDestinationSuggestions(true);
+        setShowDestinationSuggestions(filtered.length > 0);
       } finally {
         setIsLoadingDestinationSuggestions(false);
       }
     } else {
+      // Hide suggestions when text is too short, but keep previous data
       setShowDestinationSuggestions(false);
+      setIsLoadingDestinationSuggestions(false);
     }
   };
+
+  // ============= DEBOUNCED DESTINATION CHANGE HANDLER (2000ms delay) =============
+  const handleDestinationChange = useDebouncedCallback((text: string) => {
+    fetchDestinationSuggestions(text);
+  }, 2000);
 
   // Handle selecting a pickup location
   const handleSelectPickupLocation = (location: LocationSuggestion) => {
@@ -289,7 +304,6 @@ export default function PassengerHomeScreen() {
   // Show default suggestions when field is focused
   const handlePickupFocus = async () => {
     if (pickup.length === 0) {
-      // Show saved and recent locations
       setPickupSuggestions([...savedLocations, ...recentLocations]);
       setShowPickupSuggestions(true);
     }
@@ -298,7 +312,6 @@ export default function PassengerHomeScreen() {
   const handleDestinationFocus = async () => {
     if (destination.length === 0) {
       try {
-        // Try to get nearby amenities using free OpenStreetMap
         if (location) {
           const nearbyPlaces = await OpenStreetMapService.searchNearbyAmenities(
             location.coords.latitude,
@@ -404,11 +417,15 @@ export default function PassengerHomeScreen() {
           ) : (
             <MapView
               style={styles.map}
-              provider={PROVIDER_GOOGLE}
+              mapType="none"
               initialRegion={initialRegion}
               showsUserLocation={true}
               followsUserLocation={true}
             >
+              <UrlTile
+                urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                maximumZ={19}
+              />
               {location && (
                 <Marker
                   coordinate={{
@@ -449,7 +466,10 @@ export default function PassengerHomeScreen() {
                     style={styles.input}
                     placeholder="Pickup Location"
                     value={pickup}
-                    onChangeText={handlePickupChange}
+                    onChangeText={(text) => {
+                      setPickup(text);
+                      handlePickupChange(text);
+                    }}
                     onFocus={handlePickupFocus}
                     placeholderTextColor="#999"
                   />
@@ -461,7 +481,10 @@ export default function PassengerHomeScreen() {
                     style={styles.input}
                     placeholder="Where to?"
                     value={destination}
-                    onChangeText={handleDestinationChange}
+                    onChangeText={(text) => {
+                      setDestination(text);
+                      handleDestinationChange(text);
+                    }}
                     onFocus={handleDestinationFocus}
                     placeholderTextColor="#999"
                   />
@@ -469,7 +492,7 @@ export default function PassengerHomeScreen() {
               </ThemedView>
 
               {/* Pickup Location Suggestions */}
-              {showPickupSuggestions && (
+              {(showPickupSuggestions || isLoadingPickupSuggestions) && (
                 <View style={styles.suggestionsOverlay}>
                   {isLoadingPickupSuggestions ? (
                     <View style={styles.loadingContainer}>
@@ -493,7 +516,8 @@ export default function PassengerHomeScreen() {
               )}
 
               {/* Destination Location Suggestions */}
-              {showDestinationSuggestions && (
+              {(showDestinationSuggestions ||
+                isLoadingDestinationSuggestions) && (
                 <View style={styles.suggestionsOverlay}>
                   {isLoadingDestinationSuggestions ? (
                     <View style={styles.loadingContainer}>
