@@ -12,7 +12,7 @@ import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
-import MapView, { Marker, Polyline, UrlTile } from "react-native-maps";
+import MapView, { Marker, Polyline } from "react-native-maps";
 
 /**
  * RideRequestScreen - Passenger Screen for Searching Drivers
@@ -105,8 +105,8 @@ export default function RideRequestScreen() {
     latitude: number;
     longitude: number;
   }>(() => ({
-    latitude: 6.4253,
-    longitude: 3.4041,
+    latitude: 6.5244, // Lagos, Nigeria
+    longitude: 3.3792,
   }));
   const [driverLocation, setDriverLocation] = useState<{
     latitude: number;
@@ -140,7 +140,7 @@ export default function RideRequestScreen() {
         latitude: parseFloat(pickupLat),
         longitude: parseFloat(pickupLong),
       }
-    : { latitude: 6.4311, longitude: 3.4697 }; // Fallback
+    : { latitude: 6.5244, longitude: 3.3792 }; // Lagos, Nigeria
 
   // Map region centered on pickup location with good zoom level
   const mapRegion = {
@@ -191,7 +191,7 @@ export default function RideRequestScreen() {
 
           // Send location update to backend
           await RideService.updatePassengerLocation({
-            tripId: currentTripId,
+            rideId: currentTripId,
             latitude: coords.latitude,
             longitude: coords.longitude,
           });
@@ -673,15 +673,60 @@ export default function RideRequestScreen() {
     }
   };
 
+  const handleCancelRide = async () => {
+    if (!currentTripId) {
+      router.back();
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await RideService.cancelRide(currentTripId);
+
+      toast.show({
+        type: "success",
+        title: "Ride cancelled",
+        message: "Your ride request has been cancelled.",
+      });
+    } catch (error: any) {
+      console.error("❌ Failed to cancel ride:", error);
+      toast.show({
+        type: "error",
+        title: "Cancel failed",
+        message: error.response?.data?.message || "Failed to cancel ride.",
+      });
+    } finally {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+
+      if (locationIntervalRef.current) {
+        clearInterval(locationIntervalRef.current);
+        locationIntervalRef.current = null;
+      }
+
+      setState("request");
+      setTripPhase(TripPhase.IDLE);
+      setPriceOffers([]);
+      setCurrentTripId(null);
+      setDriverInfo(null);
+      setDriverLocation(null);
+      setIsLoading(false);
+      router.back();
+    }
+  };
+
   return (
     <ThemedView style={styles.container}>
       {/* Real-Time Map with Route & Demo Cars */}
       <View style={styles.mapContainer}>
-        <MapView style={styles.map} mapType="none" initialRegion={mapRegion}>
-          <UrlTile
-            urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-            maximumZ={19}
-          />
+        <MapView
+          style={styles.map}
+          mapType="standard"
+          initialRegion={mapRegion}
+          provider="google"
+        >
           {/* User Pickup Marker Only */}
           <Marker
             coordinate={pickupCoords}
@@ -893,7 +938,7 @@ export default function RideRequestScreen() {
             <ThemedButton
               text="Cancel Search"
               variant="outline"
-              onPress={() => router.back()}
+              onPress={handleCancelRide}
               style={styles.cancelButton}
             />
           </ThemedView>
@@ -947,7 +992,7 @@ export default function RideRequestScreen() {
             <ThemedButton
               text="Cancel Ride"
               variant="outline"
-              onPress={() => router.back()}
+              onPress={handleCancelRide}
               style={styles.cancelButton}
             />
           </ThemedView>

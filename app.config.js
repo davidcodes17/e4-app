@@ -5,6 +5,12 @@ export default ({ config }) => {
   return {
     ...config,
     ...appJson.expo,
+    extra: {
+      ...appJson.expo.extra,
+      EXPO_PUBLIC_GOOGLE_MAPS_API_KEY:
+        process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
+        "AIzaSyAqehj9okkEIzLDLjCgwzMl_geFYvZmdUc",
+    },
     android: {
       ...appJson.expo.android,
       ...config.android,

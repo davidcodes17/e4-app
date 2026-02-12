@@ -13,7 +13,8 @@
       "bundleIdentifier": "com.david-codes.e4",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "googleMapsApiKey": "AIzaSyAqehj9okkEIzLDLjCgwzMl_geFYvZmdUc"
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +22,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.david_codes.e4"
+      "package": "com.david_codes.e4",
+      "googleMapsApiKey": "AIzaSyAqehj9okkEIzLDLjCgwzMl_geFYvZmdUc"
     },
     "web": {
       "output": "static",

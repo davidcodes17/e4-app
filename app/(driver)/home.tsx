@@ -19,7 +19,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import MapView, { Marker, Polyline, UrlTile } from "react-native-maps";
+import MapView, { Marker, Polyline } from "react-native-maps";
 
 /**
  * DriverHomeScreen - Driver waiting for and accepting ride requests
@@ -254,7 +254,7 @@ export default function DriverHomeScreen() {
 
           // Send location update via REST API
           await RideService.updateDriverLocation({
-            tripId: currentTrip.id,
+            rideId: currentTrip.id,
             latitude: freshLocation.coords.latitude,
             longitude: freshLocation.coords.longitude,
           });
@@ -540,11 +540,8 @@ export default function DriverHomeScreen() {
             initialRegion={initialRegion}
             showsUserLocation={true}
             followsUserLocation={true}
+            provider="google"
           >
-            <UrlTile
-              urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-              maximumZ={19}
-            />
             {location && (
               <Marker
                 coordinate={{

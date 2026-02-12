@@ -139,16 +139,37 @@ export const RideService = {
 
   /**
    * Update driver location during active trip
+   * PUT /api/rides/{rideId}/driver/location
    */
   async updateDriverLocation(data: {
-    tripId: string;
+    rideId: string;
     latitude: number;
     longitude: number;
   }): Promise<ApiResponse<any>> {
-    const response = await apiClient.post(
-      "/api/v1/rides/update-location",
-      data,
+    const response = await apiClient.put(
+      `/api/rides/${data.rideId}/driver/location`,
+      {
+        latitude: data.latitude,
+        longitude: data.longitude,
+      },
     );
+    return response.data;
+  },
+
+  /**
+   * Get live ride state - polling endpoint
+   * GET /api/rides/{rideId}/live
+   *
+   * Response includes:
+   * - rideId
+   * - status (REQUESTED, ACCEPTED, DRIVER_EN_ROUTE, ARRIVED, MET_CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED)
+   * - driverLocation: { latitude, longitude }
+   * - passengerLocation: { latitude, longitude }
+   * - driverMetConfirmed: boolean
+   * - passengerMetConfirmed: boolean
+   */
+  async getLiveRideState(rideId: string): Promise<ApiResponse<any>> {
+    const response = await apiClient.get(`/api/rides/${rideId}/live`);
     return response.data;
   },
 
@@ -156,14 +177,97 @@ export const RideService = {
    * Update passenger location during active trip
    */
   async updatePassengerLocation(data: {
-    tripId: string;
+    rideId: string;
     latitude: number;
     longitude: number;
   }): Promise<ApiResponse<any>> {
-    const response = await apiClient.post(
-      "/api/v1/rides/update-location",
-      data,
+    const response = await apiClient.put(
+      `/api/rides/${data.rideId}/passenger/location`,
+      {
+        latitude: data.latitude,
+        longitude: data.longitude,
+      },
     );
+    return response.data;
+  },
+
+  /**
+   * Driver confirms meeting with passenger
+   * POST /api/rides/{rideId}/driver/confirm-meet
+   *
+   * If passenger also confirmed, status automatically changes to IN_PROGRESS
+   */
+  async confirmDriverMeet(rideId: string): Promise<ApiResponse<any>> {
+    const response = await apiClient.post(
+      `/api/rides/${rideId}/driver/confirm-meet`,
+    );
+    return response.data;
+  },
+
+  /**
+   * Passenger confirms meeting with driver
+   * POST /api/rides/{rideId}/passenger/confirm-meet
+   *
+   * If driver also confirmed, status automatically changes to IN_PROGRESS
+   */
+  async confirmPassengerMeet(rideId: string): Promise<ApiResponse<any>> {
+    const response = await apiClient.post(
+      `/api/rides/${rideId}/passenger/confirm-meet`,
+    );
+    return response.data;
+  },
+
+  /**
+   * Cancel a ride request
+   * POST /api/rides/{rideId}/cancel
+   *
+   * Only works for REQUESTED or ACCEPTED rides
+   */
+  async cancelRide(rideId: string): Promise<ApiResponse<any>> {
+    const response = await apiClient.post(`/api/rides/${rideId}/cancel`);
+    return response.data;
+  },
+
+  /**
+   * End an active trip
+   * POST /api/rides/{rideId}/end
+   *
+   * Can be called by either driver or passenger
+   * Marks trip status as COMPLETED
+   * Backend enforces:
+   * - Only ride participants can end trip
+   * - Cannot end already completed trip
+   * - Cannot update location after trip ends
+   */
+  async endTrip(rideId: string): Promise<ApiResponse<any>> {
+    const response = await apiClient.post(`/api/rides/${rideId}/end`);
+    return response.data;
+  },
+
+  /**
+   * Submit a review for a completed trip (passenger only)
+   * POST /api/rides/{rideId}/review
+   *
+   * Request Body:
+   * {
+   *   "rating": 1-5 (number),
+   *   "comment": "optional text"
+   * }
+   *
+   * Backend enforces:
+   * - Only passengers can review drivers
+   * - Trip must be COMPLETED
+   * - Cannot submit multiple reviews for same trip
+   */
+  async submitReview(data: {
+    rideId: string;
+    rating: number;
+    comment?: string;
+  }): Promise<ApiResponse<any>> {
+    const response = await apiClient.post(`/api/rides/${data.rideId}/review`, {
+      rating: data.rating,
+      comment: data.comment || "",
+    });
     return response.data;
   },
 };

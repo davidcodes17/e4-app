@@ -2,7 +2,9 @@ import axios from "axios";
 
 // Get your API key from Google Cloud Console
 // Make sure to enable Google Places API, Maps JavaScript API
-const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "";
+const GOOGLE_PLACES_API_KEY =
+  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
+  "AIzaSyAqehj9okkEIzLDLjCgwzMl_geFYvZmdUc";
 
 interface PlacePrediction {
   place_id: string;

@@ -4,7 +4,7 @@ import LocationSuggestions, {
 } from "@/components/location-suggestions";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { OpenStreetMapService } from "@/services/openstreetmap.service";
+import { GooglePlacesService } from "@/services/google-places.service";
 import { useDebouncedCallback } from "@/utils/debounce";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Location from "expo-location";
@@ -20,7 +20,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import MapView, { Marker, UrlTile } from "react-native-maps";
+import MapView, { Marker } from "react-native-maps";
 
 const RadarLoader = () => {
   const pulseAnim = useRef(new Animated.Value(0)).current;
@@ -166,8 +166,9 @@ export default function PassengerHomeScreen() {
       setIsLoadingPickupSuggestions(true);
       // Keep showing suggestions while loading (don't clear)
       try {
-        const predictions = await OpenStreetMapService.getPlacePredictions(
+        const predictions = await GooglePlacesService.getPlacePredictions(
           text,
+          undefined,
           location
             ? {
                 latitude: location.coords.latitude,
@@ -226,8 +227,9 @@ export default function PassengerHomeScreen() {
       setIsLoadingDestinationSuggestions(true);
       // Keep showing suggestions while loading (don't clear)
       try {
-        const predictions = await OpenStreetMapService.getPlacePredictions(
+        const predictions = await GooglePlacesService.getPlacePredictions(
           text,
+          undefined,
           location
             ? {
                 latitude: location.coords.latitude,
@@ -363,17 +365,14 @@ export default function PassengerHomeScreen() {
         let currentLocation = await Location.getCurrentPositionAsync({});
         setLocation(currentLocation);
 
-        // Try to reverse geocode the pickup location
-        const reverseGeocode = await Location.reverseGeocodeAsync({
-          latitude: currentLocation.coords.latitude,
-          longitude: currentLocation.coords.longitude,
-        });
+        // Use Google Places Service for reverse geocoding
+        const address = await GooglePlacesService.getAddressFromCoordinates(
+          currentLocation.coords.latitude,
+          currentLocation.coords.longitude,
+        );
 
-        if (reverseGeocode.length > 0) {
-          const address = reverseGeocode[0];
-          setPickup(
-            `${address.name || ""} ${address.street || ""}, ${address.city || ""}`,
-          );
+        if (address) {
+          setPickup(address);
         }
       } catch (error) {
         console.error("Error fetching location:", error);
@@ -421,11 +420,8 @@ export default function PassengerHomeScreen() {
               initialRegion={initialRegion}
               showsUserLocation={true}
               followsUserLocation={true}
+              provider="google"
             >
-              <UrlTile
-                urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-                maximumZ={19}
-              />
               {location && (
                 <Marker
                   coordinate={{
