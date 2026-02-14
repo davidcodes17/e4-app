@@ -30,6 +30,10 @@ export interface LoginData {
   role: "USER" | "DRIVER";
 }
 
+export interface OtpTokenData {
+  accessToken: string;
+}
+
 export interface User {
   id: string;
   firstName: string;

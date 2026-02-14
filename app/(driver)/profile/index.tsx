@@ -419,6 +419,12 @@ const styles = StyleSheet.create({
     color: "#1B1B1F",
     fontWeight: "600",
   },
+  menuDivider: {
+    height: 1,
+    backgroundColor: "#F1F1F4",
+    marginLeft: 0,
+    marginRight: 0,
+  },
   detailCard: {
     backgroundColor: "#FFF",
     borderRadius: 16,

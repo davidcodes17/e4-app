@@ -1,13 +1,41 @@
 import apiClient from "./api-client";
 import { TokenService } from "./token.service";
-import { ApiResponse, Driver, LoginData, NestedApiResponse } from "./types";
+import {
+  ApiResponse,
+  Driver,
+  LoginData,
+  NestedApiResponse,
+  OtpTokenData,
+} from "./types";
 
 export const DriverService = {
-  async createAccount(data: any): Promise<ApiResponse<Driver>> {
+  async createAccount(data: any): Promise<ApiResponse<OtpTokenData>> {
+    console.log(data, "DATA");
     const response = await apiClient.post(
       "/api/v1/driver/create-account",
       data,
     );
+    const token = response.data?.data?.accessToken;
+    if (token) {
+      await TokenService.saveToken(token);
+      await TokenService.saveRole("DRIVER");
+    }
+    return response.data;
+  },
+
+  async validateOtp(
+    email: string,
+    otp: string,
+  ): Promise<ApiResponse<OtpTokenData>> {
+    const response = await apiClient.post("/api/v1/driver/validate-otp", {
+      email,
+      otp,
+    });
+    const token = response.data?.accessToken;
+    if (token) {
+      await TokenService.saveToken(token);
+      await TokenService.saveRole("DRIVER");
+    }
     return response.data;
   },
 

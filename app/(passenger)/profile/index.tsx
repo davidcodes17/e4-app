@@ -384,7 +384,8 @@ const styles = StyleSheet.create({
   menuDivider: {
     height: 1,
     backgroundColor: "#F1F1F4",
-    marginLeft: 64,
+    marginLeft: 0,
+    marginRight: 0,
   },
   savedPlaceItem: {
     flexDirection: "row",

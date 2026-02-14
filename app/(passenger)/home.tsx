@@ -416,7 +416,7 @@ export default function PassengerHomeScreen() {
           ) : (
             <MapView
               style={styles.map}
-              mapType="none"
+              mapType="standard"
               initialRegion={initialRegion}
               showsUserLocation={true}
               followsUserLocation={true}
@@ -434,19 +434,19 @@ export default function PassengerHomeScreen() {
               )}
             </MapView>
           )}
-        </View>
 
-        {errorMsg && (
-          <ThemedView
-            bg="#FFE5E5"
-            p={10}
-            style={{ margin: 10, borderRadius: 10 }}
-          >
-            <ThemedText color="#FF3B30" size="xs" align="center">
-              {errorMsg}
-            </ThemedText>
-          </ThemedView>
-        )}
+          {errorMsg && (
+            <ThemedView
+              bg="#FFE5E5"
+              p={10}
+              style={{ margin: 10, borderRadius: 10 }}
+            >
+              <ThemedText color="#FF3B30" size="xs" align="center">
+                {errorMsg}
+              </ThemedText>
+            </ThemedView>
+          )}
+        </View>
 
         <ThemedView style={styles.searchContainer} px={20} py={24}>
           <ThemedText size="lg" weight="bold" style={styles.greeting}>

@@ -4,6 +4,7 @@ import { ThemedButton } from "@/components/themed-button";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { DirectionsService } from "@/services/directions.service";
+import { GooglePlacesService } from "@/services/google-places.service";
 import { RideService } from "@/services/ride.service";
 import { PriceOffer, TripPhase } from "@/services/types";
 import { calculateDistance, hasDeviatedFromRoute } from "@/utils/distance";
@@ -47,39 +48,7 @@ interface RouteCoordinate {
   longitude: number;
 }
 
-interface DemoCar {
-  id: string;
-  latitude: number;
-  longitude: number;
-  rotation: number;
-}
-
-/**
- * Generate demo car locations around a central point
- * Creates realistic car positions for better UX
- */
-function generateDemoCars(
-  centerLat: number,
-  centerLng: number,
-  count: number = 5,
-): DemoCar[] {
-  const cars: DemoCar[] = [];
-  const radius = 0.01; // ~1km radius in degrees
-
-  for (let i = 0; i < count; i++) {
-    const angle = (i / count) * Math.PI * 2;
-    const distance = radius * (0.5 + Math.random() * 0.5);
-
-    cars.push({
-      id: `demo-car-${i}`,
-      latitude: centerLat + distance * Math.cos(angle),
-      longitude: centerLng + distance * Math.sin(angle),
-      rotation: angle * (180 / Math.PI),
-    });
-  }
-
-  return cars;
-}
+/* Demo cars removed — using real driver markers only */
 
 export default function RideRequestScreen() {
   const router = useRouter();
@@ -116,7 +85,6 @@ export default function RideRequestScreen() {
     RouteCoordinate[]
   >([]);
   const [driverEta, setDriverEta] = useState<string | null>(null);
-  const [demoCars, setDemoCars] = useState<DemoCar[]>([]);
   const [routeCoordinates, setRouteCoordinates] = useState<RouteCoordinate[]>(
     [],
   );
@@ -135,12 +103,47 @@ export default function RideRequestScreen() {
   const [mainTripEta, setMainTripEta] = useState<string | null>(null);
 
   // Coordinates logic
-  const pickupCoords = pickupLat
-    ? {
-        latitude: parseFloat(pickupLat),
-        longitude: parseFloat(pickupLong),
+  const [pickupCoords, setPickupCoords] = useState<{
+    latitude: number;
+    longitude: number;
+  }>(
+    () =>
+      pickupLat
+        ? {
+            latitude: parseFloat(pickupLat),
+            longitude: parseFloat(pickupLong),
+          }
+        : { latitude: 6.5244, longitude: 3.3792 }, // Lagos, Nigeria
+  );
+
+  // If the map didn't provide coordinates but the user typed an address (pickup),
+  // try to resolve it via Google Places (get predictions -> place details).
+  React.useEffect(() => {
+    const resolveTypedPickup = async () => {
+      try {
+        // Only attempt if we don't have explicit lat/long from params
+        if ((!pickupLat || !pickupLong) && pickup) {
+          const preds = await GooglePlacesService.getPlacePredictions(pickup);
+          if (preds && preds.length > 0) {
+            const details = await GooglePlacesService.getPlaceDetails(
+              preds[0].place_id,
+            );
+            if (details) {
+              setPickupCoords({
+                latitude: details.latitude,
+                longitude: details.longitude,
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.warn("Failed to geocode typed pickup:", error);
       }
-    : { latitude: 6.5244, longitude: 3.3792 }; // Lagos, Nigeria
+    };
+
+    resolveTypedPickup();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Map region centered on pickup location with good zoom level
   const mapRegion = {
@@ -150,15 +153,7 @@ export default function RideRequestScreen() {
     longitudeDelta: 0.05,
   };
 
-  // Generate demo cars on mount
-  useEffect(() => {
-    const cars = generateDemoCars(
-      pickupCoords.latitude,
-      pickupCoords.longitude,
-      5,
-    );
-    setDemoCars(cars);
-  }, [pickupCoords.latitude, pickupCoords.longitude]);
+  // No demo cars — show actual pickup & destination markers only
 
   // ============= PASSENGER LOCATION TRACKING =============
   // Send passenger location updates every 3 seconds after trip is accepted
@@ -400,7 +395,12 @@ export default function RideRequestScreen() {
     };
 
     fetchDirections();
-  }, []);
+  }, [
+    pickupCoords.latitude,
+    pickupCoords.longitude,
+    destinationCoords.latitude,
+    destinationCoords.longitude,
+  ]);
 
   useEffect(() => {
     const fetchEstimates = async () => {
@@ -440,7 +440,12 @@ export default function RideRequestScreen() {
     };
 
     fetchEstimates();
-  }, []);
+  }, [
+    pickupCoords.latitude,
+    pickupCoords.longitude,
+    destinationCoords.latitude,
+    destinationCoords.longitude,
+  ]);
 
   useEffect(() => {
     // ============= REST-BASED POLLING MECHANISM =============
@@ -738,23 +743,16 @@ export default function RideRequestScreen() {
             </View>
           </Marker>
 
-          {/* Demo Car Markers (Simulated Nearby Drivers) */}
-          {demoCars.map((car) => (
-            <Marker
-              key={car.id}
-              coordinate={{ latitude: car.latitude, longitude: car.longitude }}
-              title="Available Driver"
-            >
-              <View
-                style={[
-                  styles.carMarker,
-                  { transform: [{ rotate: `${car.rotation}deg` }] },
-                ]}
-              >
-                <Ionicons name="car" size={22} color="#6C006C" />
-              </View>
-            </Marker>
-          ))}
+          {/* Destination Marker (Stop) */}
+          <Marker
+            coordinate={destinationCoords}
+            title="Destination"
+            pinColor="#FF9500"
+          >
+            <View style={styles.destinationMarker}>
+              <Ionicons name="flag" size={18} color="#FFFFFF" />
+            </View>
+          </Marker>
 
           {/* Actual Driver Marker (when searching/found) */}
           {driverLocation && state !== "request" && (
@@ -938,7 +936,8 @@ export default function RideRequestScreen() {
             <ThemedButton
               text="Cancel Search"
               variant="outline"
-              onPress={handleCancelRide}
+              onPress={() => {}}
+              disabled={true}
               style={styles.cancelButton}
             />
           </ThemedView>
@@ -1131,6 +1130,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     borderColor: "#FFFFFF",
+  },
+  destinationMarker: {
+    backgroundColor: "#FF9500",
+    padding: 6,
+    borderRadius: 14,
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
   offersList: {
     maxHeight: 250,

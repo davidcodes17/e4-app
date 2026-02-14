@@ -129,12 +129,12 @@ const OnboardingScreen = () => {
                 flex={1}
                 variant="outline"
                 borderColor="white"
-                borderRadius={30}
-                py={16}
+                borderRadius={34}
+                py={20}
                 justify="center"
                 onPress={() => router.push("/(auth)/driver")}
               >
-                <ThemedText color="white" size="md" weight="bold">
+                <ThemedText color="white" size="lg" weight="bold">
                   Driver
                 </ThemedText>
               </ThemedButton>
@@ -143,12 +143,12 @@ const OnboardingScreen = () => {
                 flex={1}
                 variant="solid"
                 bg="white"
-                borderRadius={30}
-                py={16}
+                borderRadius={34}
+                py={20}
                 justify="center"
                 onPress={() => router.push("/(auth)/passenger")}
               >
-                <ThemedText color="#6C006C" size="md" weight="bold">
+                <ThemedText color="#6C006C" size="lg" weight="bold">
                   Passenger
                 </ThemedText>
               </ThemedButton>

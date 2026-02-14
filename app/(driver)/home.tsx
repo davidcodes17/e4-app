@@ -518,14 +518,6 @@ export default function DriverHomeScreen() {
     <ThemedView style={styles.container}>
       {/* Real-Time Map */}
       <View style={styles.mapContainer}>
-        {/* Floating Profile Button */}
-        <TouchableOpacity
-          style={styles.profileButton}
-          onPress={() => router.push("/(driver)/profile" as Href)}
-        >
-          <Ionicons name="person" size={24} color="#6C006C" />
-        </TouchableOpacity>
-
         {!location && !errorMsg ? (
           <View style={styles.loadingContainer}>
             <InlineLoader color="#6C006C" size={8} />
@@ -536,7 +528,7 @@ export default function DriverHomeScreen() {
         ) : (
           <MapView
             style={styles.map}
-            mapType="none"
+            mapType="standard"
             initialRegion={initialRegion}
             showsUserLocation={true}
             followsUserLocation={true}
@@ -609,14 +601,21 @@ export default function DriverHomeScreen() {
               Waiting for ride requests…
             </ThemedText>
           </ThemedView>
+
           <TouchableOpacity
+            style={styles.profileButton}
+            onPress={() => router.push("/(driver)/profile" as Href)}
+          >
+            <Ionicons name="person" size={24} color="#6C006C" />
+          </TouchableOpacity>
+          {/* <TouchableOpacity
             style={styles.simulateBtn}
             onPress={() => setState("incoming")}
           >
             <ThemedText size="xs" color="#FFFFFF" weight="bold">
               Simulate
             </ThemedText>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </ThemedView>
       )}
 
@@ -841,9 +840,9 @@ const styles = StyleSheet.create({
     borderColor: "#FFFFFF",
   },
   profileButton: {
-    position: "absolute",
-    top: 60,
-    right: 20,
+    // position: "absolute",
+    // top: 60,
+    // right: 20,
     width: 48,
     height: 48,
     borderRadius: 24,
@@ -867,6 +866,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    justifyContent: "space-between",
     elevation: 8,
   },
   onlineIndicator: {
