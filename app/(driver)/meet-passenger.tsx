@@ -126,31 +126,43 @@ export default function DriverMeetPassengerScreen() {
 
     const pollTrip = async () => {
       try {
-        const response = await RideService.getLiveRideState(tripId);
+        const response = await RideService.getTripStatus(tripId);
         if (response.success && response.data) {
-          const liveState = response.data;
+          const tripData =
+            response.data?.data?.data ?? response.data?.data ?? response.data;
+
+          setTrip(tripData);
 
           // Update driver location if available
-          if (liveState.driverLocation) {
-            setDriverLocation(liveState.driverLocation);
+          const driverLat =
+            tripData.driverLatitude ??
+            tripData.driver?.latitude ??
+            tripData.driver?.currentLatitude ??
+            tripData.driver?.location?.latitude;
+          const driverLng =
+            tripData.driverLongitude ??
+            tripData.driver?.longitude ??
+            tripData.driver?.currentLongitude ??
+            tripData.driver?.location?.longitude;
+
+          if (typeof driverLat === "number" && typeof driverLng === "number") {
+            setDriverLocation({ latitude: driverLat, longitude: driverLng });
           }
 
           // Update confirmation status
-          if (liveState.driverMetConfirmed) {
-            setIsConfirmed(true);
-          }
+          if (tripData.driverMetConfirmed) setIsConfirmed(true);
 
           // If both confirmed or trip already in progress, navigate
           if (
-            liveState.status === "IN_PROGRESS" ||
-            liveState.status === "MET_CONFIRMED" ||
-            (liveState.driverMetConfirmed && liveState.passengerMetConfirmed)
+            tripData.status === "IN_PROGRESS" ||
+            tripData.status === "MET_CONFIRMED" ||
+            (tripData.driverMetConfirmed && tripData.passengerMetConfirmed)
           ) {
             router.replace("/(driver)/home");
           }
 
           // If trip cancelled, navigate back
-          if (liveState.status === "CANCELLED") {
+          if (tripData.status === "CANCELLED") {
             toast.show({
               type: "warning",
               title: "Trip Cancelled",
@@ -176,29 +188,38 @@ export default function DriverMeetPassengerScreen() {
 
   // ============= FETCH ROUTE =============
   useEffect(() => {
-    if (
-      !driverLocation ||
-      trip?.pickupLatitude === undefined ||
-      trip?.pickupLongitude === undefined
-    )
+    if (!driverLocation) return;
+
+    const pickupLat = Number(trip?.pickupLatitude);
+    const pickupLng = Number(trip?.pickupLongitude);
+
+    if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) {
+      setRouteCoordinates([]);
+      setEta(null);
       return;
+    }
 
     (async () => {
       try {
         const directions = await DirectionsService.getDirections(
           driverLocation.latitude,
           driverLocation.longitude,
-          trip.pickupLatitude!,
-          trip.pickupLongitude!,
+          pickupLat,
+          pickupLng,
         );
 
         if (directions) {
           setRouteCoordinates(directions.coordinates);
           setDistance(directions.distance);
           setEta(DirectionsService.formatDuration(directions.duration));
+        } else {
+          setRouteCoordinates([]);
+          setEta(null);
         }
       } catch (error) {
         console.error("Error fetching route:", error);
+        setRouteCoordinates([]);
+        setEta(null);
       }
     })();
   }, [driverLocation, trip?.pickupLatitude, trip?.pickupLongitude]);

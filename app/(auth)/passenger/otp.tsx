@@ -50,8 +50,10 @@ export default function PassengerOtpScreen() {
     setOtpError(null);
     setIsLoading(true);
     try {
-      const response = await AuthService.validateOtp(email, otp);
-      if (response.success) {
+      const res = await AuthService.validateOtp(email, otp);
+      const response: any = res?.data;
+      console.log(response, "PASSEN");
+      if (res.success) {
         router.push({
           pathname: "/(auth)/passenger/register",
           params: { email },

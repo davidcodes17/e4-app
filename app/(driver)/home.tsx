@@ -47,7 +47,8 @@ export default function DriverHomeScreen() {
   const router = useRouter();
   const toast = useToast();
   const [state, setState] = useState<DriverState>("online");
-  const [newFare, setNewFare] = useState("5000");
+  const [newFare, setNewFare] = useState("");
+  const [pendingFare, setPendingFare] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [currentTrip, setCurrentTrip] = useState<Trip | null>(null);
   const [location, setLocation] = useState<Location.LocationObject | null>(
@@ -92,6 +93,7 @@ export default function DriverHomeScreen() {
             if (!currentTrip || currentTrip.id !== newTrip.id) {
               console.log("📍 New Ride Request:", newTrip);
               setCurrentTrip(newTrip);
+              setNewFare(newTrip.price.toString());
               setState("incoming");
               toast.show({
                 type: "info",
@@ -132,10 +134,20 @@ export default function DriverHomeScreen() {
           console.log(response, "SKJSJ");
           if (response.success && response.data) {
             // Handle nested response structure: { success, data: { data: trip } }
-            const trip = response.data.data || response.data;
+            const trip =
+              response.data?.data?.data ?? response.data?.data ?? response.data;
             console.log(`📊 Trip Status: ${trip.status}`);
             setTripStatus(trip.status);
             setCurrentTrip(trip);
+
+            if (trip.status === "ACCEPTED" && state !== "accepted") {
+              setState("accepted");
+              router.replace({
+                pathname: "/(driver)/meet-passenger" as Href,
+                params: { tripId: trip.id },
+              });
+              return;
+            }
 
             if (lastTripStatusRef.current !== trip.status) {
               lastTripStatusRef.current = trip.status;
@@ -437,6 +449,7 @@ export default function DriverHomeScreen() {
 
     // ============= OPTIMISTIC UPDATE: Update UI immediately =============
     setSentOfferPrice(offeredPrice);
+    setPendingFare(null);
     setIsLoading(true);
 
     try {
@@ -457,6 +470,7 @@ export default function DriverHomeScreen() {
         // ============= RESET STATE AFTER SUCCESS =============
         setState("incoming"); // Stay in incoming to wait for acceptance
         setSentOfferPrice(null);
+        setPendingFare(null);
         setNewFare("5000");
       } else {
         console.error("❌ Failed to send price offer");
@@ -472,6 +486,7 @@ export default function DriverHomeScreen() {
       console.error("❌ Price offer error:", error);
       // ============= REVERT OPTIMISTIC UPDATE ON ERROR =============
       setSentOfferPrice(null);
+      setPendingFare(null);
       toast.show({
         type: "error",
         title: "Offer failed",
@@ -483,11 +498,18 @@ export default function DriverHomeScreen() {
   };
 
   const handleStartTrip = () => {
-    // Logic to start trip
-    toast.show({
-      type: "success",
-      title: "Trip started",
-      message: "You can now head to the pickup location.",
+    if (!currentTrip?.id) {
+      toast.show({
+        type: "error",
+        title: "Trip unavailable",
+        message: "No trip was found to start.",
+      });
+      return;
+    }
+
+    router.replace({
+      pathname: "/(driver)/meet-passenger" as Href,
+      params: { tripId: currentTrip.id },
     });
   };
 
@@ -513,6 +535,13 @@ export default function DriverHomeScreen() {
 
   const passengerEmail =
     currentTrip?.user?.emailAddress || currentTrip?.user?.email || "N/A";
+
+  const displayFare =
+    sentOfferPrice ??
+    pendingFare ??
+    currentTrip?.price ??
+    currentTrip?.initialFare ??
+    0;
 
   return (
     <ThemedView style={styles.container}>
@@ -686,13 +715,7 @@ export default function DriverHomeScreen() {
                   Fare
                 </ThemedText>
                 <ThemedText size="lg" weight="bold" color="#6C006C">
-                  ₦
-                  {(
-                    sentOfferPrice ??
-                    currentTrip?.price ??
-                    currentTrip?.initialFare ??
-                    0
-                  ).toLocaleString()}
+                  ₦{displayFare.toLocaleString()}
                 </ThemedText>
               </ThemedView>
             </ThemedView>
@@ -703,13 +726,10 @@ export default function DriverHomeScreen() {
                 variant="outline"
                 onPress={() => {
                   // Pre-fill the input with current trip fare
-                  setNewFare(
-                    (
-                      currentTrip?.price ??
-                      currentTrip?.initialFare ??
-                      5000
-                    ).toString(),
-                  );
+                  const baseFare =
+                    currentTrip?.price ?? currentTrip?.initialFare ?? 5000;
+                  setNewFare(baseFare.toString());
+                  setPendingFare(baseFare);
                   setState("modify_price");
                 }}
                 disabled={sentOfferPrice !== null}
@@ -754,7 +774,11 @@ export default function DriverHomeScreen() {
                 <TextInput
                   style={styles.priceInput}
                   value={newFare}
-                  onChangeText={setNewFare}
+                  onChangeText={(value) => {
+                    setNewFare(value);
+                    const parsed = Number.parseFloat(value);
+                    setPendingFare(Number.isNaN(parsed) ? null : parsed);
+                  }}
                   keyboardType="number-pad"
                   autoFocus
                 />
@@ -778,7 +802,10 @@ export default function DriverHomeScreen() {
                 disabled={isLoading}
               />
               <TouchableOpacity
-                onPress={() => setState("incoming")}
+                onPress={() => {
+                  setPendingFare(null);
+                  setState("incoming");
+                }}
                 style={styles.cancelLink}
                 disabled={isLoading}
               >

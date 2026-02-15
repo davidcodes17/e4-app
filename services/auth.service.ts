@@ -7,7 +7,7 @@ import {
   OtpTokenData,
   User,
 } from "./types";
-
+111842;
 export const AuthService = {
   async sendOtp(email: string): Promise<ApiResponse<void>> {
     // Keep send + resend in sync to avoid creating duplicate active OTPs.
@@ -24,7 +24,9 @@ export const AuthService = {
       email,
       otp,
     });
-    const token = response.data?.data?.accessToken;
+    console.log(response, "SJSuuuu");
+    const token = response?.data?.data?.data?.accessToken;
+    console.log(token, "TOKENSS_!");
     if (token) {
       await TokenService.saveToken(token);
       await TokenService.saveRole("USER");

@@ -95,6 +95,7 @@ export default function RideRequestScreen() {
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
+  const isCancelledRef = useRef(false);
   const [passengerLocation, setPassengerLocation] = useState<{
     latitude: number;
     longitude: number;
@@ -156,9 +157,10 @@ export default function RideRequestScreen() {
   // No demo cars — show actual pickup & destination markers only
 
   // ============= PASSENGER LOCATION TRACKING =============
-  // Send passenger location updates every 3 seconds after trip is accepted
+  // Send passenger location updates every 3 seconds after trip starts (ON_TRIP)
   useEffect(() => {
-    if ((state === "found" || state === "searching") && currentTripId) {
+    if (state === "found" && tripPhase === TripPhase.ON_TRIP && currentTripId) {
+      if (isCancelledRef.current) return;
       const updateLocation = async () => {
         try {
           // Request location permissions
@@ -220,6 +222,7 @@ export default function RideRequestScreen() {
   useEffect(() => {
     const calculateDriverRoute = async () => {
       if (
+        !isCancelledRef.current &&
         driverLocation &&
         (tripPhase === TripPhase.EN_ROUTE_TO_PICKUP ||
           tripPhase === TripPhase.DRIVER_ASSIGNED)
@@ -258,6 +261,7 @@ export default function RideRequestScreen() {
   // Detect when driver is within 50m of pickup and transition to main trip
   useEffect(() => {
     if (
+      !isCancelledRef.current &&
       tripPhase === TripPhase.EN_ROUTE_TO_PICKUP &&
       driverLocation &&
       pickupCoords
@@ -294,7 +298,11 @@ export default function RideRequestScreen() {
   // ============= MAIN TRIP ROUTE CALCULATION =============
   // Calculate route from driver's current location to destination during ON_TRIP
   useEffect(() => {
-    if (tripPhase === TripPhase.ON_TRIP && destinationCoords) {
+    if (
+      !isCancelledRef.current &&
+      tripPhase === TripPhase.ON_TRIP &&
+      destinationCoords
+    ) {
       const calculateMainTripRoute = async () => {
         try {
           console.log("🗺️ Calculating main trip route to destination...");
@@ -337,6 +345,7 @@ export default function RideRequestScreen() {
   // Recalculate route if driver deviates significantly during pre-pickup
   useEffect(() => {
     if (
+      !isCancelledRef.current &&
       tripPhase === TripPhase.EN_ROUTE_TO_PICKUP &&
       driverLocation &&
       driverRouteCoordinates.length > 0
@@ -358,6 +367,7 @@ export default function RideRequestScreen() {
   useEffect(() => {
     const fetchDirections = async () => {
       try {
+        if (isCancelledRef.current) return;
         setIsLoadingRoute(true);
         const directions = await DirectionsService.getDirections(
           pickupCoords.latitude,
@@ -405,6 +415,7 @@ export default function RideRequestScreen() {
   useEffect(() => {
     const fetchEstimates = async () => {
       try {
+        if (isCancelledRef.current) return;
         const response = await RideService.getEstimate({
           pickupLatitude: pickupCoords.latitude,
           pickupLongitude: pickupCoords.longitude,
@@ -453,10 +464,12 @@ export default function RideRequestScreen() {
     // This replaces WebSocket real-time updates with REST API calls
 
     if ((state === "searching" || state === "found") && currentTripId) {
+      if (isCancelledRef.current) return;
       console.log("🔄 Starting polling for trip:", currentTripId);
 
       const pollForUpdates = async () => {
         try {
+          if (isCancelledRef.current) return;
           // 1. Fetch price offers from drivers
           const offersResponse = await RideService.getTripOffers(currentTripId);
           if (offersResponse.success && offersResponse.data) {
@@ -472,7 +485,10 @@ export default function RideRequestScreen() {
           // 2. Fetch trip status to check if driver accepted
           const statusResponse = await RideService.getTripStatus(currentTripId);
           if (statusResponse.success && statusResponse.data) {
-            const trip = statusResponse.data;
+            const trip =
+              statusResponse.data?.data?.data ??
+              statusResponse.data?.data ??
+              statusResponse.data;
             console.log(`📊 Trip Status: ${trip.status}`);
 
             // Update driver location if available in trip response
@@ -521,6 +537,12 @@ export default function RideRequestScreen() {
                 });
                 setState("found");
                 setTripPhase(TripPhase.DRIVER_ASSIGNED);
+
+                // Navigate to waiting screen after acceptance
+                router.replace({
+                  pathname: "/(passenger)/waiting-for-driver",
+                  params: { tripId: trip.id || currentTripId },
+                });
 
                 // Schedule transition to EN_ROUTE_TO_PICKUP after 1 second
                 setTimeout(() => {
@@ -644,6 +666,7 @@ export default function RideRequestScreen() {
 
   const handleRequestRide = async () => {
     if (!rideDetails) return;
+    isCancelledRef.current = false;
     setIsLoading(true);
     setState("searching");
     try {
@@ -679,6 +702,7 @@ export default function RideRequestScreen() {
   };
 
   const handleCancelRide = async () => {
+    isCancelledRef.current = true;
     if (!currentTripId) {
       router.back();
       return;
@@ -794,15 +818,15 @@ export default function RideRequestScreen() {
               lineDashPattern={[0]}
             />
           )}
-          {/* Fallback simple line if no route */}
-          {tripPhase !== TripPhase.ON_TRIP && routeCoordinates.length === 0 && (
-            <Polyline
-              coordinates={[pickupCoords, destinationCoords]}
-              strokeColor="#6C006C"
-              strokeWidth={4}
-            />
-          )}
         </MapView>
+        {tripPhase !== TripPhase.ON_TRIP && isLoadingRoute && (
+          <View style={styles.routeLoaderOverlay}>
+            <InlineLoader color="#6C006C" size={8} />
+            <ThemedText size="xs" style={styles.routeLoaderText}>
+              Loading route...
+            </ThemedText>
+          </View>
+        )}
       </View>
 
       <View style={styles.bottomSheet}>
@@ -936,8 +960,9 @@ export default function RideRequestScreen() {
             <ThemedButton
               text="Cancel Search"
               variant="outline"
-              onPress={() => {}}
-              disabled={true}
+              onPress={handleCancelRide}
+              disabled={isLoading}
+              isLoading={isLoading}
               style={styles.cancelButton}
             />
           </ThemedView>
@@ -1011,6 +1036,25 @@ const styles = StyleSheet.create({
   map: {
     ...StyleSheet.absoluteFillObject,
   },
+  routeLoaderOverlay: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    alignItems: "center",
+    gap: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  routeLoaderText: {
+    color: "#6C006C",
+  },
   bottomSheet: {
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 32,
@@ -1031,7 +1075,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   rideInfoCard: {
-    backgroundColor: "#F9FAFB",
+    // backgroundColor: "#F9FAFB",
     borderRadius: 20,
     marginBottom: 24,
     borderWidth: 1,
