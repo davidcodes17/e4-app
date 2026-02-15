@@ -1,1 +1,1 @@
-export const HOST = "https://1b67jdhr-8080.uks1.devtunnels.ms"
+export const HOST = "https://e4-backend-production-1374.up.railway.app";
