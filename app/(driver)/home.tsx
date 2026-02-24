@@ -11,15 +11,15 @@ import * as Location from "expo-location";
 import { Href, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  View,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    StyleSheet,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
-import MapView, { Marker, Polyline } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 
 /**
  * DriverHomeScreen - Driver waiting for and accepting ride requests
@@ -561,7 +561,7 @@ export default function DriverHomeScreen() {
             initialRegion={initialRegion}
             showsUserLocation={true}
             followsUserLocation={true}
-            provider="google"
+            provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
           >
             {location && (
               <Marker
@@ -612,7 +612,6 @@ export default function DriverHomeScreen() {
         )}
       </View>
 
-      {/* Online Status Banner */}
       {state === "online" && (
         <ThemedView
           style={[styles.statusBanner, { backgroundColor: "#6C006C" }]}

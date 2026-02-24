@@ -8,8 +8,8 @@ import { RideService } from "@/services/ride.service";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
-import MapView, { Marker, Polyline } from "react-native-maps";
+import { Platform, StyleSheet, View } from "react-native";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 
 /**
  * PassengerTripInProgressScreen - Active Trip Tracking for Passengers
@@ -251,7 +251,7 @@ export default function PassengerTripInProgressScreen() {
           style={styles.map}
           mapType="standard"
           region={mapRegion}
-          provider="google"
+          provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
           showsUserLocation={false}
         >
           {/* Driver Current Location Marker */}

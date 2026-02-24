@@ -10,13 +10,14 @@ import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Linking,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
+    Linking,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    View,
 } from "react-native";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
 export default function PassengerWaitingForDriverScreen() {
   const router = useRouter();
@@ -319,7 +320,7 @@ export default function PassengerWaitingForDriverScreen() {
           style={styles.map}
           mapType="standard"
           initialRegion={mapRegion}
-          provider="google"
+          provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
         >
           {/* Passenger Location */}
           {passengerLocation && (

@@ -12,8 +12,14 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
-import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
-import MapView, { Marker, Polyline } from "react-native-maps";
+import {
+    Platform,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 
 /**
  * RideRequestScreen - Passenger Screen for Searching Drivers
@@ -754,7 +760,7 @@ export default function RideRequestScreen() {
           style={styles.map}
           mapType="standard"
           initialRegion={mapRegion}
-          provider="google"
+          provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
         >
           {/* User Pickup Marker Only */}
           <Marker

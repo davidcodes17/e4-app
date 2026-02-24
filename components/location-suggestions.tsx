@@ -116,7 +116,9 @@ export default function LocationSuggestions({
         data={suggestions}
         renderItem={renderSuggestion}
         keyExtractor={(item) => item.id}
-        scrollEnabled={false}
+        scrollEnabled
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
         ItemSeparatorComponent={() => <View style={styles.divider} />}
       />
     </ThemedView>

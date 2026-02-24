@@ -20,7 +20,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
 const RadarLoader = () => {
   const pulseAnim = useRef(new Animated.Value(0)).current;
@@ -420,7 +420,7 @@ export default function PassengerHomeScreen() {
               initialRegion={initialRegion}
               showsUserLocation={true}
               followsUserLocation={true}
-              provider="google"
+              provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
             >
               {location && (
                 <Marker

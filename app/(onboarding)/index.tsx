@@ -7,14 +7,14 @@ import { useRouter } from "expo-router";
 import { useEffect } from "react";
 import { TouchableOpacity } from "react-native";
 import Animated, {
-    Easing,
-    useAnimatedStyle,
-    useSharedValue,
-    withDelay,
-    withRepeat,
-    withSequence,
-    withSpring,
-    withTiming,
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -74,7 +74,7 @@ const OnboardingScreen = () => {
             flex={1}
             justify="center"
             position="absolute"
-            top={300}
+            top={250}
             left={0}
             right={0}
             align="center"
@@ -130,7 +130,7 @@ const OnboardingScreen = () => {
                 variant="outline"
                 borderColor="white"
                 borderRadius={34}
-                py={20}
+                py={18}
                 justify="center"
                 onPress={() => router.push("/(auth)/driver")}
               >
@@ -144,7 +144,7 @@ const OnboardingScreen = () => {
                 variant="solid"
                 bg="white"
                 borderRadius={34}
-                py={20}
+                py={18}
                 justify="center"
                 onPress={() => router.push("/(auth)/passenger")}
               >
