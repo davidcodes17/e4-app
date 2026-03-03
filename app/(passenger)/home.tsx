@@ -94,6 +94,10 @@ export default function PassengerHomeScreen() {
   const router = useRouter();
   const [pickup, setPickup] = useState("");
   const [destination, setDestination] = useState("");
+  const [selectedPickupCoords, setSelectedPickupCoords] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [location, setLocation] = useState<Location.LocationObject | null>(
     null,
   );
@@ -292,9 +296,41 @@ export default function PassengerHomeScreen() {
   }, 2000);
 
   // Handle selecting a pickup location
-  const handleSelectPickupLocation = (location: LocationSuggestion) => {
-    setPickup(location.address);
+  const handleSelectPickupLocation = async (
+    selectedLocation: LocationSuggestion,
+  ) => {
+    setPickup(selectedLocation.address);
     setShowPickupSuggestions(false);
+
+    if (
+      typeof selectedLocation.latitude === "number" &&
+      typeof selectedLocation.longitude === "number"
+    ) {
+      setSelectedPickupCoords({
+        latitude: selectedLocation.latitude,
+        longitude: selectedLocation.longitude,
+      });
+      return;
+    }
+
+    if (selectedLocation.placeId) {
+      try {
+        const details = await GooglePlacesService.getPlaceDetails(
+          selectedLocation.placeId,
+        );
+        if (details) {
+          setSelectedPickupCoords({
+            latitude: details.latitude,
+            longitude: details.longitude,
+          });
+          return;
+        }
+      } catch (error) {
+        console.error("Error resolving pickup place details:", error);
+      }
+    }
+
+    setSelectedPickupCoords(null);
   };
 
   // Handle selecting a destination location
@@ -364,6 +400,10 @@ export default function PassengerHomeScreen() {
 
         let currentLocation = await Location.getCurrentPositionAsync({});
         setLocation(currentLocation);
+        setSelectedPickupCoords({
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude,
+        });
 
         // Use Google Places Service for reverse geocoding
         const address = await GooglePlacesService.getAddressFromCoordinates(
@@ -464,6 +504,7 @@ export default function PassengerHomeScreen() {
                     value={pickup}
                     onChangeText={(text) => {
                       setPickup(text);
+                      setSelectedPickupCoords(null);
                       handlePickupChange(text);
                     }}
                     onFocus={handlePickupFocus}
@@ -553,8 +594,12 @@ export default function PassengerHomeScreen() {
                 pathname: "/(passenger)/ride-request",
                 params: {
                   pickup,
-                  pickupLat: location?.coords.latitude.toString(),
-                  pickupLong: location?.coords.longitude.toString(),
+                  ...(selectedPickupCoords
+                    ? {
+                        pickupLat: selectedPickupCoords.latitude.toString(),
+                        pickupLong: selectedPickupCoords.longitude.toString(),
+                      }
+                    : {}),
                   destination,
                 },
               })

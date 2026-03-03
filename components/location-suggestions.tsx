@@ -10,6 +10,9 @@ export interface LocationSuggestion {
   address: string;
   type: "saved" | "recent" | "popular";
   icon?: string;
+  placeId?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 interface LocationSuggestionsProps {
