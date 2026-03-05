@@ -152,16 +152,38 @@ export default function DriverMeetPassengerScreen() {
           // Update confirmation status
           if (tripData.driverMetConfirmed) setIsConfirmed(true);
 
-          // If both confirmed or trip already in progress, navigate
+          // If both confirmed or trip already in progress, start tracking ride
           if (
             tripData.status === "IN_PROGRESS" ||
+            tripData.status === "ONGOING" ||
             tripData.status === "MET_CONFIRMED" ||
             (tripData.driverMetConfirmed && tripData.passengerMetConfirmed)
           ) {
-            router.replace("/(driver)/home");
+            const passengerName =
+              tripData.user?.fullName ||
+              [tripData.user?.firstName, tripData.user?.lastName]
+                .filter(Boolean)
+                .join(" ") ||
+              "Passenger";
+            const pickupLat = Number(tripData.pickupLatitude ?? 6.5244);
+            const pickupLng = Number(tripData.pickupLongitude ?? 3.3792);
+            const dropOffLat = Number(tripData.dropOffLatitude ?? 6.5244);
+            const dropOffLng = Number(tripData.dropOffLongitude ?? 3.3792);
+            router.replace({
+              pathname: "/(driver)/trip-in-progress",
+              params: {
+                rideId: tripId,
+                passengerName,
+                pickupLat: String(pickupLat || 6.5244),
+                pickupLng: String(pickupLng || 3.3792),
+                dropOffLat: String(dropOffLat || 6.5244),
+                dropOffLng: String(dropOffLng || 3.3792),
+              },
+            });
+            return;
           }
 
-          // If trip cancelled, navigate back
+          // If trip cancelled, navigate back to home
           if (tripData.status === "CANCELLED") {
             toast.show({
               type: "warning",
@@ -169,6 +191,7 @@ export default function DriverMeetPassengerScreen() {
               message: "The passenger cancelled the trip.",
             });
             router.replace("/(driver)/home");
+            return;
           }
         }
       } catch (error) {

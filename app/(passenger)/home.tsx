@@ -20,6 +20,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { NIGERIA_DEFAULT_REGION } from "@/constants/map";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
 const RadarLoader = () => {
@@ -421,19 +422,8 @@ export default function PassengerHomeScreen() {
     })();
   }, []);
 
-  const initialRegion = location
-    ? {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        latitudeDelta: 0.005,
-        longitudeDelta: 0.005,
-      }
-    : {
-        latitude: 6.5244, // Default to Lagos, Nigeria
-        longitude: 3.3792,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      };
+  // Always open map in Nigeria (Lagos). User location still shown via showsUserLocation.
+  const initialRegion = NIGERIA_DEFAULT_REGION;
 
   return (
     <ThemedView style={styles.container}>

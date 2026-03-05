@@ -22,7 +22,19 @@ import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 export default function PassengerWaitingForDriverScreen() {
   const router = useRouter();
   const toast = useToast();
-  const { tripId } = useLocalSearchParams<{ tripId: string }>();
+  const {
+    tripId,
+    pickupLat: pickupLatParam,
+    pickupLng: pickupLngParam,
+    dropOffLat: dropOffLatParam,
+    dropOffLng: dropOffLngParam,
+  } = useLocalSearchParams<{
+    tripId: string;
+    pickupLat?: string;
+    pickupLng?: string;
+    dropOffLat?: string;
+    dropOffLng?: string;
+  }>();
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [passengerLocation, setPassengerLocation] = useState<{
@@ -171,16 +183,47 @@ export default function PassengerWaitingForDriverScreen() {
             setIsConfirmed(true);
           }
 
-          // If both confirmed or trip in progress, navigate
+          // If both confirmed or trip in progress, start tracking ride
           if (
             liveState.status === "IN_PROGRESS" ||
+            liveState.status === "ONGOING" ||
             liveState.status === "MET_CONFIRMED" ||
             (liveState.driverMetConfirmed && liveState.passengerMetConfirmed)
           ) {
-            router.replace("/(passenger)/home");
+            const driverName =
+              trip?.driver?.fullName ||
+              [trip?.driver?.firstName, trip?.driver?.lastName]
+                .filter(Boolean)
+                .join(" ") ||
+              liveState.driver?.fullName ||
+              "Driver";
+            const pickupLat =
+              pickupLatParam ??
+              String(trip?.pickupLatitude ?? liveState.pickupLatitude ?? 6.5244);
+            const pickupLng =
+              pickupLngParam ??
+              String(trip?.pickupLongitude ?? liveState.pickupLongitude ?? 3.3792);
+            const dropOffLat =
+              dropOffLatParam ??
+              String(trip?.dropOffLatitude ?? liveState.dropOffLatitude ?? 6.5244);
+            const dropOffLng =
+              dropOffLngParam ??
+              String(trip?.dropOffLongitude ?? liveState.dropOffLongitude ?? 3.3792);
+            router.replace({
+              pathname: "/(passenger)/trip-in-progress",
+              params: {
+                rideId: tripId,
+                driverName,
+                pickupLat,
+                pickupLng,
+                dropOffLat,
+                dropOffLng,
+              },
+            });
+            return;
           }
 
-          // If trip cancelled, navigate back
+          // If trip cancelled, navigate back to home
           if (liveState.status === "CANCELLED") {
             toast.show({
               type: "warning",
@@ -188,6 +231,7 @@ export default function PassengerWaitingForDriverScreen() {
               message: "The driver cancelled the trip.",
             });
             router.replace("/(passenger)/home");
+            return;
           }
 
           setIsLoadingTrip(false);

@@ -19,6 +19,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { NIGERIA_DEFAULT_REGION } from "@/constants/map";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 
 /**
@@ -152,12 +153,11 @@ export default function RideRequestScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Map region centered on pickup location with good zoom level
+  // Map region centered on pickup or Nigeria (Lagos)
   const mapRegion = {
+    ...NIGERIA_DEFAULT_REGION,
     latitude: pickupCoords.latitude,
     longitude: pickupCoords.longitude,
-    latitudeDelta: 0.05,
-    longitudeDelta: 0.05,
   };
 
   // No demo cars — show actual pickup & destination markers only
@@ -544,10 +544,16 @@ export default function RideRequestScreen() {
                 setState("found");
                 setTripPhase(TripPhase.DRIVER_ASSIGNED);
 
-                // Navigate to waiting screen after acceptance
+                // Navigate to waiting screen after acceptance (pass coords for later trip-in-progress)
                 router.replace({
                   pathname: "/(passenger)/waiting-for-driver",
-                  params: { tripId: trip.id || currentTripId },
+                  params: {
+                    tripId: trip.id || currentTripId,
+                    pickupLat: String(pickupCoords.latitude),
+                    pickupLng: String(pickupCoords.longitude),
+                    dropOffLat: String(destinationCoords.latitude),
+                    dropOffLng: String(destinationCoords.longitude),
+                  },
                 });
 
                 // Schedule transition to EN_ROUTE_TO_PICKUP after 1 second
@@ -576,13 +582,38 @@ export default function RideRequestScreen() {
                 title: "Driver arrived",
                 message: "Your driver is at the pickup location.",
               });
-            } else if (trip.status === "ONGOING") {
+            } else if (trip.status === "ONGOING" || trip.status === "IN_PROGRESS") {
               console.log("🚗 Trip is now in progress");
               setTripPhase(TripPhase.ON_TRIP);
+              const driverName =
+                trip.driver?.fullName ||
+                (trip.driver?.firstName && trip.driver?.lastName
+                  ? `${trip.driver.firstName} ${trip.driver.lastName}`
+                  : "Driver");
               toast.show({
-                type: "info",
+                type: "success",
                 title: "Trip started",
                 message: "Your trip is now in progress.",
+              });
+              // Navigate to trip-in-progress (in case user is still on ride-request)
+              router.replace({
+                pathname: "/(passenger)/trip-in-progress",
+                params: {
+                  rideId: trip.id || currentTripId,
+                  driverName,
+                  pickupLat: String(
+                    trip.pickupLatitude ?? pickupCoords.latitude ?? 6.5244,
+                  ),
+                  pickupLng: String(
+                    trip.pickupLongitude ?? pickupCoords.longitude ?? 3.3792,
+                  ),
+                  dropOffLat: String(
+                    trip.dropOffLatitude ?? destinationCoords.latitude ?? 6.5244,
+                  ),
+                  dropOffLng: String(
+                    trip.dropOffLongitude ?? destinationCoords.longitude ?? 3.3792,
+                  ),
+                },
               });
             } else if (trip.status === "COMPLETED") {
               console.log("✅ Trip completed");

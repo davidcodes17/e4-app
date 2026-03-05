@@ -152,13 +152,15 @@ export default function DriverTripInProgressScreen() {
         const response = await RideService.getLiveRideState(rideId);
 
         if (response.success && response.data) {
-          const liveState = response.data;
-          console.log(`📊 Trip Status: ${liveState.status}`);
+          const liveState =
+            response.data?.data ?? response.data;
+          const status = liveState?.status ?? liveState?.tripStatus ?? "IN_PROGRESS";
+          console.log(`📊 Trip Status: ${status}`);
 
-          setTripStatus(liveState.status);
+          setTripStatus(status);
 
           // Stop polling if trip is completed
-          if (liveState.status === "COMPLETED") {
+          if (status === "COMPLETED") {
             console.log("✅ Trip completed");
 
             if (locationIntervalRef.current) {
